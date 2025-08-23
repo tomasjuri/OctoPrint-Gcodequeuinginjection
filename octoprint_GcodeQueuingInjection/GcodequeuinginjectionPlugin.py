@@ -1,8 +1,11 @@
 import octoprint.plugin
 import logging
-from .gcode_sequences import *
+import random as rnd
+from . import gcode_sequences as gcd
 import threading
+import time
 import re
+from .config import *
 
 class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
     octoprint.plugin.AssetPlugin,
@@ -14,16 +17,33 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         assert self.state in ["printing", "waiting_for_position", "stopped"]
         self._position_event = threading.Event()
         self.position = None
+        self.cam_offsets = CAM_EXTRUDER_OFFSETS
+        self.rnd_offset_range = RANDOM_OFFSET_RANGE
+
+    def gen_capture_pos(self, capture_position, offsets, rnd_range):
+        capture_position = {
+            "x": capture_position["x"] + offsets["x"] + rnd.uniform(rnd_range["x"][0], rnd_range["x"][1]),
+            "y": capture_position["y"] + offsets["y"] + rnd.uniform(rnd_range["y"][0], rnd_range["y"][1]),
+            "z": capture_position["z"] + offsets["z"] + rnd.uniform(rnd_range["z"][0], rnd_range["z"][1]),
+        }
+        return capture_position
+
+    def capture_img(self, capture_position):
+        self._logger.debug("Capturing image at position: {capture_position}".format(capture_position=capture_position))
+        # TODO: Implement capture
+        time.sleep(1)
+        self._logger.debug("Capture complete")
+        pass
 
     def gcode_queuing(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
-        if gcode and gcode == CAPTURE_GCODE[0]:
+        if gcode and gcode == gcd.CAPTURE_GCODE[0]:
             self.state = [c for c in cmd.split(" ") if c.startswith("S")][0]
             
             # S1: ask for position
             if self.state == "S0": 
                 self._logger.debug("STATE: printing ==> waiting for position")
                 self._position_event.clear()
-                cmd = WAITING_FOR_POS_GCODE
+                cmd = gcd.WAITING_FOR_POS_GCODE
             
             # S2: wait for position and move to capture position
             elif self.state == "S1":
@@ -31,15 +51,27 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                 self._logger.debug("Waiting for position...")
                 self._position_event.wait(30)
                 self._logger.debug("Position received: {position}".format(position=self.position))
-                cmd = MOVE_TO_CAPTURE_GCODE
+                self.capture_pos = self.gen_capture_pos(
+                    self.position, self.cam_offsets, self.rnd_offset_range)
+                cmd = gcd.gen_move_to_capture_gcode(
+                    capture_position=self.capture_pos,
+                    retraction_mm=RETRACTION_MM,
+                    retraction_speed=RETRACTION_SPEED,
+                )
 
-            # S3: Do the actual capture
+            # S3: Do the actual capture and return
             elif self.state == "S2":
-                pass
-            
-            # S4: Go back to start position
-            elif self.state == "S3":
-                pass
+                self._logger.debug("STATE: moving_to_capture ==> capture_and_return")
+                
+                capture_thread = threading.Thread(
+                    target=self.capture_img, args=(self.capture_pos,))
+                capture_thread.start()
+                
+                cmd = gcd.gen_capture_and_return_gcode(
+                    return_position=self.position,
+                    retraction_mm=RETRACTION_MM,
+                    retraction_speed=RETRACTION_SPEED,
+                )
             
             self._logger.debug("Rewriting to: {cmd}".format(**locals()))
             return cmd
@@ -48,9 +80,9 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
     def gcode_sent(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
         self._logger.debug("Gcode sent: {cmd}, {gcode}".format(**locals()))
 
-        if cmd and cmd == START_PRINT_GCODE[0]:
+        if cmd and cmd == gcd.START_PRINT_GCODE[0]:
             self.print_gcode = True
-        if cmd and cmd == STOP_PRINT_GCODE[0]:
+        if cmd and cmd == gcd.STOP_PRINT_GCODE[0]:
             self.print_gcode = False
         
         if self.print_gcode:
