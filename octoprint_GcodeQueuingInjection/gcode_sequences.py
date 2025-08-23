@@ -1,4 +1,4 @@
-
+from .config import *
 
 CAPTURE_GCODE = ("M240",)
 START_PRINT_GCODE = ("@PRINT",)
@@ -23,7 +23,7 @@ def gen_move_to_capture_gcode(capture_position, retraction_mm, retraction_speed)
         (f"G0 X{capture_position['x']} Y{capture_position['y']} Z{capture_position['z']}",), # Move to capture position
         ("M400",), # Wait for all previous commands to complete
 
-        ("G4 P300",), # Wait for 300ms
+        (f"G4 P{BEFIRE_CAPTURE_WAIT_TIME_MS}",), # Wait for 300ms
         STOP_PRINT_GCODE,
     ]
     return cmd
@@ -36,14 +36,18 @@ def gen_capture_and_return_gcode(return_position, retraction_mm, retraction_spee
     }
     cmd = [
         START_PRINT_GCODE,
-        ("G4 P800",), # Wait for 800ms for capture to complete
+        (f"G4 P{CAPTURE_WAIT_TIME_MS}",), # Wait for 800ms for capture to complete
 
         ("G90",),            # Set to absolute mode (if needed)
         (f"G0 X{move_pos['x']} Y{move_pos['y']} Z{move_pos['z']}",), # Move to capture position
         ("M400",), # Wait for all previous commands to complete
+        
         ("M83",),   # Relative extruder mode
         (f"G1 E{retraction_mm} F{retraction_speed}",),  # Retract
         ("M400",),  # Wait for retraction
+
+        ("G90",),           # Set to absolute mode
+        ("M82",),           # absolute extruder mode
         STOP_PRINT_GCODE,
     ]
     return cmd
