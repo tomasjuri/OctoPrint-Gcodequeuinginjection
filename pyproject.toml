@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OctoPrint-Gcodequeuinginjection"
+version = "0.1.0"
+description = "TODO"
+authors = [
+    {name = "Tomas Jurica", email = "tomasjuri@gmail.com"}
+]
+readme = {file = "README.md", content-type = "markdown"}
+dynamic = [
+    "license"
+]
+
+requires-python = ">=3.7, <4"
+
+# any additional requirements (besides OctoPrint) should be listed here
+dependencies = []
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = [
+    "octoprint_GcodeQueuingInjection",
+    "octoprint_GcodeQueuingInjection.*"
+]
+
+[project.entry-points."octoprint.plugin"]
+GcodeQueuingInjection = "octoprint_GcodeQueuingInjection"
+
+[project.urls]
+Homepage = "https://github.com/tomasjuri/OctoPrint-Gcodequeuinginjection"
+
+[project.optional-dependencies]
+develop = [
+    "go-task-bin"
+]
