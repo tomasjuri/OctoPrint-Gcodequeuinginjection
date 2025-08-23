@@ -139,7 +139,7 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         
         position = {"x": None, "y": None, "z": None, "e": None}
 
-        pos_re = r'^ok X:(\d+\.\d+) Y:(\d+\.\d+) Z:(\d+\.\d+) E:(\d+\.\d+) Count: A:'
+        pos_re = r'X:(\d+\.\d+) Y:(\d+\.\d+) Z:(\d+\.\d+) E:(\d+\.\d+) Count: A:'
         pos_matched = re.search(pos_re, line)
         if pos_matched:
             position["x"] = float(pos_matched.group(1))
