@@ -87,15 +87,15 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
             
             # S1: ask for position
             if self.state == "S0": 
-                self._logger.debug("STATE: printing ==> waiting for position")
+                self._logger.debug("S0 STATE: printing ==> waiting for position")
                 self._position_event.clear()
                 cmd = gcd.WAITING_FOR_POS_GCODE
             
             # S2: wait for position and move to capture position
             elif self.state == "S1":
-                self._logger.debug("STATE: waiting for position ==> moving_to_capture")
+                self._logger.debug("S1 STATE: waiting for position ==> moving_to_capture")
                 self._logger.debug("Waiting for position...")
-                self._position_event.wait(30)
+                self._position_event.wait()
                 self._logger.debug("Position received: {position}".format(position=self.position))
                 self.capture_pos, self.layer_n, self.layer_height = self.gen_capture_pos(
                     cmd, self.position, self.cam_offsets, self.rnd_offset_range)
@@ -107,7 +107,7 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
 
             # S3: Do the actual capture and return
             elif self.state == "S2":
-                self._logger.debug("STATE: moving_to_capture ==> capture_and_return")
+                self._logger.debug("S2 STATE: moving_to_capture ==> capture_and_return")
 
                 capture_thread = threading.Thread(
                     target=self.capture_img, args=(self.capture_pos, self.layer_n, self.layer_height))
@@ -124,8 +124,6 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
 
     
     def gcode_sent(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
-        self._logger.debug("Gcode sent: {cmd}, {gcode}".format(**locals()))
-
         if cmd and cmd == gcd.START_PRINT_GCODE[0]:
             self.print_gcode = True
         if cmd and cmd == gcd.STOP_PRINT_GCODE[0]:
@@ -137,6 +135,7 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
     def gcode_received(self, comm_instance, line, *args, **kwargs):
         """Handle M114 position responses and trigger state transitions"""
         
+        print("gcode_received: {line}".format(**locals()))
         position = {"x": None, "y": None, "z": None, "e": None}
 
         pos_re = r'X:(\d+\.\d+) Y:(\d+\.\d+) Z:(\d+\.\d+) E:(\d+\.\d+) Count: A:'
