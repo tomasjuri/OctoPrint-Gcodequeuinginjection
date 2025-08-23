@@ -23,7 +23,7 @@ def gen_move_to_capture_gcode(capture_position, retraction_mm, retraction_speed)
         (f"G0 X{capture_position['x']} Y{capture_position['y']} Z{capture_position['z']}",), # Move to capture position
         ("M400",), # Wait for all previous commands to complete
 
-        (f"G4 P{BEFIRE_CAPTURE_WAIT_TIME_MS}",), # Wait for 300ms
+        (f"G4 P{BEFORE_CAPTURE_WAIT_TIME_MS}",), # Wait for 300ms
         STOP_PRINT_GCODE,
     ]
     return cmd

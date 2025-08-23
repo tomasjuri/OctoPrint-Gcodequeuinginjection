@@ -6,6 +6,10 @@ import threading
 import time
 import re
 from .config import *
+from .camera import Camera
+from datetime import datetime
+import json
+import os
 
 class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
     octoprint.plugin.AssetPlugin,
@@ -13,27 +17,69 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
 ):
     def __init__(self):
         self.print_gcode = False
-        self.state = "printing"
-        assert self.state in ["printing", "waiting_for_position", "stopped"]
+
         self._position_event = threading.Event()
         self.position = None
         self.cam_offsets = CAM_EXTRUDER_OFFSETS
         self.rnd_offset_range = RANDOM_OFFSET_RANGE
 
-    def gen_capture_pos(self, capture_position, offsets, rnd_range):
+        self.camera = Camera()
+        self.init_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+    def _get_save_path(self):
+        """Get the configured save path"""
+        save_path = os.path.expanduser(CAPTURE_FOLDER)
+        save_path = os.path.join(save_path, self.init_timestamp)
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+        return save_path
+
+    def gen_capture_pos(self, cmd, capture_position, offsets, rnd_range):
+        # Parse M240 Z<height> ZN<layer_num> S<state> format
+        # Example: M240 Z0.4 ZN1 S0
+        parts = cmd.split(" ")
+        
+        # Extract Z height (remove 'Z' prefix)
+        layer_height = float(parts[1][1:])  # parts[1] = "Z0.4" -> "0.4"
+        
+        # Extract layer number (remove 'ZN' prefix)
+        layer_n = int(parts[2][2:])     # parts[2] = "ZN1" -> "1"
+        
         capture_position = {
             "x": capture_position["x"] + offsets["x"] + rnd.uniform(rnd_range["x"][0], rnd_range["x"][1]),
             "y": capture_position["y"] + offsets["y"] + rnd.uniform(rnd_range["y"][0], rnd_range["y"][1]),
             "z": capture_position["z"] + offsets["z"] + rnd.uniform(rnd_range["z"][0], rnd_range["z"][1]),
         }
-        return capture_position
+        return capture_position, layer_n, layer_height
 
-    def capture_img(self, capture_position):
+    def capture_img(self, capture_position, layer_n, layer_height):
         self._logger.debug("Capturing image at position: {capture_position}".format(capture_position=capture_position))
-        # TODO: Implement capture
-        time.sleep(1)
-        self._logger.debug("Capture complete")
-        pass
+        
+        img = self.camera.capture_image()
+        self._logger.debug("Image captured")
+        
+        img_filepath = f"img_{layer_n:03d}.jpg"
+        json_filepath = f"img_{layer_n:03d}.json"
+
+        im_path = os.path.join(self._get_save_path(), img_filepath)
+        img.save(im_path)
+
+        data = {
+            "img_filepath": img_filepath,
+            "json_filepath": json_filepath,
+            "capture_position": capture_position,
+            "layer_n": layer_n,
+            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "layer_height": layer_height,
+            "calibration_data": "TODO",
+        }
+        json_path = os.path.join(self._get_save_path(), json_filepath)
+        with open(json_path, "w") as f:
+            json.dump(data, f)
+
+        self._logger.debug("Capture complete, saved to {im_path} and {json_path}".format(**locals()))
+        
 
     def gcode_queuing(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
         if gcode and gcode == gcd.CAPTURE_GCODE[0]:
@@ -51,8 +97,8 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                 self._logger.debug("Waiting for position...")
                 self._position_event.wait(30)
                 self._logger.debug("Position received: {position}".format(position=self.position))
-                self.capture_pos = self.gen_capture_pos(
-                    self.position, self.cam_offsets, self.rnd_offset_range)
+                self.capture_pos, self.layer_n, self.layer_height = self.gen_capture_pos(
+                    cmd, self.position, self.cam_offsets, self.rnd_offset_range)
                 cmd = gcd.gen_move_to_capture_gcode(
                     capture_position=self.capture_pos,
                     retraction_mm=RETRACTION_MM,
@@ -62,11 +108,11 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
             # S3: Do the actual capture and return
             elif self.state == "S2":
                 self._logger.debug("STATE: moving_to_capture ==> capture_and_return")
-                
+
                 capture_thread = threading.Thread(
-                    target=self.capture_img, args=(self.capture_pos,))
+                    target=self.capture_img, args=(self.capture_pos, self.layer_n, self.layer_height))
                 capture_thread.start()
-                
+                    
                 cmd = gcd.gen_capture_and_return_gcode(
                     return_position=self.position,
                     retraction_mm=RETRACTION_MM,

@@ -16,6 +16,10 @@ RETRACTION_SPEED = 1800
 CAPTURE_WAIT_TIME_MS = 800
 BEFORE_CAPTURE_WAIT_TIME_MS = 300
 
+SNAPSHOT_URL = "http://127.0.0.1:8080/?action=snapshot"
+
+CAPTURE_FOLDER = "~/data/layer_captures"
+
 
 
 
