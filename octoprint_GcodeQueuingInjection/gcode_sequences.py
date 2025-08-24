@@ -5,53 +5,56 @@ START_PRINT_GCODE = ("@PRINT",)
 STOP_PRINT_GCODE = ("@STOPPRINT",)
 
 WAITING_FOR_POS_GCODE = [
-    START_PRINT_GCODE,
-    ("M400",), # Wait for all previous commands to complete
-    ("M114",), # Get current location
-    STOP_PRINT_GCODE,
+    "@WAITING_FOR_POS",
+    "M400",  # Wait for all previous commands to complete
+    "M114",  # Get current location
+    "@WAITING_FOR_POS_END",
 ]
 
 def gen_move_to_capture_gcode(capture_position, retraction_mm, retraction_speed):
     cmd = [
-        START_PRINT_GCODE,
-        ("M83",),   # Relative extruder mode
-        (f"G1 E-{retraction_mm} F{retraction_speed}",),  # Retract
-        ("M82",), # absolute extruder mode
-        ("M400",),  # Wait for retraction
+        "@MOVE_TO_CAPTURE",
+        "M83",   # Relative extruder mode
+        f"G1 E-{retraction_mm} F{retraction_speed}",  # Retract
+        "M82",   # absolute extruder mode
         
-        ("G90",),            # Set to absolute mode (if needed)
-        (f"G0 X{capture_position['x']} Y{capture_position['y']} Z{capture_position['z']}",), # Move to capture position
-        ("M400",), # Wait for all previous commands to complete
-
-        (f"G4 P{BEFORE_CAPTURE_WAIT_TIME_MS}",), # Wait for 300ms
-        STOP_PRINT_GCODE,
+        "G90",   # Set to absolute mode
+        f"G0 X{capture_position['x']} Y{capture_position['y']} Z{capture_position['z']}",  # Move to capture position
+        "M400",  # Wait for all movements to complete (CRITICAL!)
+        "M114",  # Get position to confirm we're there
+        "@MOVE_TO_CAPTURE_END",
     ]
     return cmd
         
 def gen_capture_and_return_gcode(return_position, retraction_mm, retraction_speed):
-    move_pos = {
-        "x": return_position["x"],
-        "y": return_position["y"],
-        "z": return_position["z"],
-    }
+    # Ensure we have the E coordinate from original position
+    original_e = return_position.get("e", 0.0)
+    
     cmd = [
-        START_PRINT_GCODE,
-        (f"G4 P{CAPTURE_WAIT_TIME_MS}",), # Wait for 800ms for capture to complete
+        "@CAPTURE_AND_RETURN",
+        f"G4 P{CAPTURE_WAIT_TIME_MS}",  # Wait for 800ms for capture to complete
 
-        ("G90",),            # Set to absolute mode (if needed)
-        (f"G0 X{move_pos['x']} Y{move_pos['y']} Z{move_pos['z']}",), # Move to capture position
-        ("M400",), # Wait for all previous commands to complete
+        "G90",   # Set to absolute mode
+        f"G0 X{return_position['x']} Y{return_position['y']} Z{return_position['z']}",  # Move back to print position
         
-        ("M83",),   # Relative extruder mode
-        (f"G1 E{retraction_mm} F{retraction_speed}",),  # Retract
-        ("M400",),  # Wait for retraction
+        # Undo the retraction first (relative extrusion)
+        "M83",   # Set to relative extruder mode
+        f"G1 E{retraction_mm} F{retraction_speed}",  # Undo retraction (push filament back)
+        
+        # Then move to absolute extruder coordinates
+        "M82",   # Set to absolute extruder mode
+        f"G92 E{original_e}",  # Set absolute extruder position to original coordinate
+        
+        "M400",  # Wait for all movements to complete
 
-        ("G90",),           # Set to absolute mode
-        ("M82",),           # absolute extruder mode
-        STOP_PRINT_GCODE,
+        "@CAPTURE_AND_RETURN_END",
     ]
     return cmd
         
+
+
+
+
 
 
 
