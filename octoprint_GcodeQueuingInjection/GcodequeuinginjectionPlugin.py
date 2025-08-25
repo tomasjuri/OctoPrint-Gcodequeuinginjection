@@ -75,10 +75,9 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
             result = {
                 'x': float(match.group("x")),
                 'y': float(match.group("y")),
-                'z': float(match.group("z"))
+                'z': float(match.group("z")),
+                'e': float(match.group("e"))
             }
-            if match.group("e") is not None:
-                result["e"] = float(match.group("e"))
             return result
         return None
 
@@ -155,16 +154,16 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                 self._logger.debug("Started async capture worker")
                 
                 # Request position using Octolapse pattern
-                position = self.get_position_async()
+                start_position = self.get_position_async()
                 
-                if position is None:
+                if start_position is None:
                     self._logger.error("Failed to get position, aborting capture")
                     return
                 
                 # Generate capture position
                 try:
                     capture_pos, layer_n, layer_height = self.gen_capture_pos(
-                        original_cmd, position, self.cam_offsets, self.rnd_offset_range)
+                        original_cmd, start_position, self.cam_offsets, self.rnd_offset_range)
                     
                     # Generate and send movement commands  
                     move_commands = gcd.gen_move_to_capture_gcode(
@@ -194,7 +193,7 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                                         
                     # Send return commands
                     return_commands = gcd.gen_capture_and_return_gcode(
-                        return_position=position,
+                        return_position=start_position,
                         retraction_mm=RETRACTION_MM,
                         retraction_speed=RETRACTION_SPEED,
                     )
