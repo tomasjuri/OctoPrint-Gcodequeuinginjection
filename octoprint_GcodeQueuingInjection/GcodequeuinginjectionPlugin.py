@@ -3,12 +3,12 @@ import logging
 import random as rnd
 from . import gcode_sequences as gcd
 import threading
-import time
+
 import re
-from .config import *
+from .config import CAM_EXTRUDER_OFFSETS, RANDOM_OFFSET_RANGE, RETRACTION_MM, RETRACTION_SPEED, CAPTURE_FOLDER
 from .camera import Camera
 from datetime import datetime
-import PIL
+
 import json
 import os
 
@@ -18,12 +18,13 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
 ):
     def __init__(self):
         self.print_gcode = False
+        self.state = None
 
         self._logger = logging.getLogger(__name__)
         
-        # Octolapse-style position tracking
+        # Position tracking
         self._position_signal = threading.Event()
-        self._position_signal.set()  # Start in set state
+        self._position_signal.set()
         self._position_request_sent = False
         self._position_payload = None
         self._position_timeout = 30.0
@@ -42,12 +43,13 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         save_path = os.path.expanduser(CAPTURE_FOLDER)
         save_path = os.path.join(save_path, self.init_timestamp)
         if not os.path.exists(save_path):
-            self._logger.debug("Creating capture folder: {}".format(save_path))
+            self._logger.debug("Creating capture folder: %s", save_path)
             os.makedirs(save_path)
         return save_path
 
     def gen_capture_pos(self, cmd, capture_position, offsets, rnd_range):
-        # Parse M240 Z<height> ZN<layer_num> S<state> format
+        """Generate capture position with offsets and random variations."""
+        # I start the capture squence with M240 Z<height> ZN<layer_num> S<state> Gcode
         # Example: M240 Z0.4 ZN1 S0
         parts = cmd.split(" ")
         
@@ -113,14 +115,15 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         """Handle position response"""
         if self._position_request_sent:
             self._position_request_sent = False
-            self._logger.debug("Position received: {}".format(payload))
+            self._logger.debug("Position received: %s", payload)
             self._position_payload = payload
             self._position_signal.set()
         else:
             self._logger.debug("Position response received but not requested by us, ignoring")
 
     def capture_img(self, capture_position, layer_n, layer_height):
-        self._logger.debug("Capturing image. Expected to be at position: {capture_position}".format(capture_position=capture_position))
+        """Capture image at specified position and save with metadata."""
+        self._logger.debug("Capturing image. Expected to be at position: %s", capture_position)
         
         img = self.camera.capture_image()
         self._logger.debug("Image captured")
@@ -141,10 +144,10 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
             "calibration_data": "TODO",
         }
         json_path = os.path.join(self._get_save_path(), json_filepath)
-        with open(json_path, "w") as f:
+        with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
-        self._logger.debug("Capture complete, saved to {im_path} and {json_path}".format(**locals()))
+        self._logger.debug("Capture complete, saved to %s and %s", im_path, json_path)
         
 
     def capture_sequence_async(self, original_cmd):
@@ -171,7 +174,7 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                         retraction_mm=RETRACTION_MM,
                         retraction_speed=RETRACTION_SPEED,
                     )
-                    self._logger.debug("Sending move to capture commands: {}".format(move_commands))
+                    self._logger.debug("Sending move to capture commands: %s", move_commands)
                     
                     # Send movement commands first
                     self._printer.commands(
@@ -184,7 +187,7 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                         self._logger.error("Failed to reach capture position, aborting capture")
                         return
                     
-                    self._logger.debug("Printer reached capture position: {}".format(final_position))
+                    self._logger.debug("Printer reached capture position: %s", final_position)
                     
                     # NOW capture image - printer is guaranteed to be in position
                     capture_thread = threading.Thread(
@@ -202,10 +205,10 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                     self._logger.debug("Sent return commands")
                     
                 except Exception as e:
-                    self._logger.error(f"Failed to execute capture sequence: {e}")
+                    self._logger.error("Failed to execute capture sequence: %s", e)
                     
             except Exception as e:
-                self._logger.error(f"Error in capture sequence: {e}")
+                self._logger.error("Error in capture sequence: %s", e)
             finally:
                 # Always release the job hold
                 self._printer.set_job_on_hold(False)
@@ -221,12 +224,13 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         worker_thread.start()
 
     def gcode_queuing(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
+        """Handle gcode queuing."""
         if gcode and gcode == gcd.CAPTURE_GCODE[0]:
             self.state = [c for c in cmd.split(" ") if c.startswith("S")][0]
             
             # S0: Start capture sequence using Octolapse pattern
             if self.state == "S0": 
-                self._logger.debug("S0 STATE: Starting capture sequence with command: {cmd}".format(**locals()))
+                self._logger.debug("S0 STATE: Starting capture sequence with command: %s", cmd)
                 
                 # Use job_on_hold to pause queue processing
                 if self._printer.set_job_on_hold(True):
@@ -237,20 +241,21 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                     self._logger.warning("Could not set job on hold, falling back")
                     return None,
             
-            self._logger.debug("Rewriting to: {cmd}".format(**locals()))
+            self._logger.debug("Rewriting to: %s", cmd)
             return cmd
 
     
     def gcode_sent(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
+        """Handle gcode sent."""
         if cmd and cmd == gcd.START_PRINT_GCODE[0]:
             self.print_gcode = True
         if cmd and cmd == gcd.STOP_PRINT_GCODE[0]:
             self.print_gcode = False
         
         if self.print_gcode:
-            self._logger.debug("Gcode sent: {cmd}".format(**locals()))
+            self._logger.debug("Gcode sent: %s", cmd)
             
-        with open(self.capture_log_file_path, "a") as f:
+        with open(self.capture_log_file_path, "a", encoding="utf-8") as f:
             f.write(f"{cmd}\n")
 
 
@@ -259,19 +264,18 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         
         # Only process if we requested the position (Octolapse pattern)
         if self._position_request_sent and 'X:' in line and 'Y:' in line and 'Z:' in line:
-            self._logger.debug("Processing position response: {}".format(line))
+            self._logger.debug("Processing position response: %s", line)
             
             position = self.parse_position_line(line)
             if position:
                 self.on_position_received(position)
             else:
-                self._logger.warning("Failed to parse position from line: {}".format(line))
+                self._logger.warning("Failed to parse position from line: %s", line)
         
         return line
 
     def get_assets(self):
-        # Define your plugin's asset files to automatically include in the
-        # core UI here.
+        """Define plugin's asset files to automatically include in the core UI."""
         return {
             "js": ["js/GcodeQueuingInjection.js"],
             "css": ["css/GcodeQueuingInjection.css"],
@@ -281,9 +285,7 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
     ##~~ Softwareupdate hook
 
     def get_update_information(self):
-        # Define the configuration for your plugin to use with the Software Update
-        # Plugin here. See https://docs.octoprint.org/en/master/bundledplugins/softwareupdate.html
-        # for details.
+        """Define the configuration for your plugin to use with the Software Update Plugin."""
         return {
             "GcodeQueuingInjection": {
                 "displayName": "Gcodequeuinginjection Plugin",

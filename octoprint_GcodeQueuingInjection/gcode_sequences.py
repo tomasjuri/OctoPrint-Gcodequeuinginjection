@@ -1,4 +1,12 @@
-from .config import *
+"""
+Gcode sequence generation for Prusa MK4 + PrusaSlicer
+
+This module generates gcode sequences optimized for Prusa MK4 which uses:
+- Relative extrusion mode (M83) by default
+- G92 E0 for extruder position resets
+"""
+
+from .config import MOVE_FEEDRATE, CAPTURE_WAIT_TIME_MS
 
 CAPTURE_GCODE = ("M240",)
 START_PRINT_GCODE = ("@PRINT",)
@@ -12,6 +20,7 @@ WAITING_FOR_POS_GCODE = [
 ]
 
 def gen_move_to_capture_gcode(capture_position, retraction_mm, retraction_speed):
+    """Generate gcode to move to capture position (Prusa MK4 + Slic3r optimized)"""
     cmd = [
         "@MOVE_TO_CAPTURE",
         "M83",   # Relative extruder mode
@@ -24,9 +33,7 @@ def gen_move_to_capture_gcode(capture_position, retraction_mm, retraction_speed)
     return cmd
         
 def gen_capture_and_return_gcode(return_position, retraction_mm, retraction_speed):
-    original_e_pos = return_position.get("e")
-    print(f"generating command to return to: {return_position}")
-    
+    """Generate gcode to return from capture position (Prusa MK4 optimized)"""
     cmd = [
         "@CAPTURE_AND_RETURN",
         f"G4 P{CAPTURE_WAIT_TIME_MS}",  # Wait for capture to complete
