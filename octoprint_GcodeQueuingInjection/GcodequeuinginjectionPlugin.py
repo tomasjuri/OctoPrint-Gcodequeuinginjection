@@ -134,14 +134,30 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         im_path = os.path.join(self._get_save_path(), img_filepath)
         img.save(im_path)
 
+        # Try to resolve current printed gcode path from OctoPrint's current job info
+        gcode_path = None
+        try:
+            job = self._printer.get_current_job()
+            if isinstance(job, dict):
+                file_info = job.get("file") or {}
+                # Common fields: path (within uploads), name, display, origin
+                gcode_path = file_info.get("path") or file_info.get("name") or None
+        except Exception as e:
+            self._logger.warning("Failed to fetch current job info for metadata: %s", e)
+
         data = {
             "img_filepath": img_filepath,
             "json_filepath": json_filepath,
             "capture_position": capture_position,
             "layer_n": layer_n,
-            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
             "layer_height": layer_height,
-            "calibration_data": "TODO",
+            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "gcode_path": gcode_path,
+            # Calibration placeholders (to be populated by future calibration feature)
+            "calibration": {
+                "data": None,
+                "timestamp": None,
+            },
         }
         json_path = os.path.join(self._get_save_path(), json_filepath)
         with open(json_path, "w", encoding="utf-8") as f:
@@ -241,7 +257,6 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                     self._logger.warning("Could not set job on hold, falling back")
                     return None,
             
-            self._logger.debug("Rewriting to: %s", cmd)
             return cmd
 
     
