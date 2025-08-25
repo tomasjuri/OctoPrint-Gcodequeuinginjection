@@ -41,9 +41,13 @@ def gen_capture_and_return_gcode(return_position, retraction_mm, retraction_spee
         "G90",   # Set to absolute mode for positioning
         f"G0 X{return_position['x']} Y{return_position['y']} Z{return_position['z']} F{MOVE_FEEDRATE}",  # Move back to print position
         
-        # Prusa MK4 uses relative extrusion - just undo the retraction
+        # Prusa MK4 uses relative extrusion - restore extruder state properly
         "M83",   # Ensure relative extruder mode (Prusa MK4 standard)
         f"G1 E{retraction_mm} F{retraction_speed}",  # Undo retraction (push filament back)
+        
+        # CRITICAL: Ensure extruder is ready for immediate extrusion
+        "M400",  # Wait for all moves to complete
+        "G92 E0",  # Reset extruder position to match expected state after layer change
         "@CAPTURE_AND_RETURN_END",
     ]
     

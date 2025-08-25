@@ -167,71 +167,65 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         
 
     def capture_sequence_async(self, original_cmd):
-        """Handle the complete capture sequence asynchronously using Octolapse pattern"""
+        """Handle the complete capture sequence asynchronously - simplified using position sync"""
         def capture_worker():
+            capture_thread = None
             try:
                 self._logger.debug("Started async capture worker")
                 
-                # Request position using Octolapse pattern
+                # Get initial position - this also serves as sync point
                 start_position = self.get_position_async()
-                
                 if start_position is None:
                     self._logger.error("Failed to get position, aborting capture")
                     return
                 
                 # Generate capture position
-                try:
-                    capture_pos, layer_n, layer_height = self.gen_capture_pos(
-                        original_cmd, start_position, self.cam_offsets, self.rnd_offset_range)
-                    
-                    # Generate and send movement commands  
-                    move_commands = gcd.gen_move_to_capture_gcode(
-                        capture_position=capture_pos,
-                        retraction_mm=RETRACTION_MM,
-                        retraction_speed=RETRACTION_SPEED,
-                    )
-                    self._logger.debug("Sending move to capture commands: %s", move_commands)
-                    
-                    # Send movement commands first
-                    self._printer.commands(
-                        move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
-                    
-                    # Wait for movement commands to complete using separate position request
-                    final_position = self.get_position_async()
-                    
-                    if final_position is None:
-                        self._logger.error("Failed to reach capture position, aborting capture")
-                        return
-                    
-                    self._logger.debug("Printer reached capture position: %s", final_position)
-                    
-                    # NOW capture image - printer is guaranteed to be in position
-                    capture_thread = threading.Thread(
-                        target=self.capture_img, args=(capture_pos, layer_n, layer_height))
-                    capture_thread.start()
-                                        
-                    # Send return commands
-                    return_commands = gcd.gen_capture_and_return_gcode(
-                        return_position=start_position,
-                        retraction_mm=RETRACTION_MM,
-                        retraction_speed=RETRACTION_SPEED,
-                    )
-                    self._printer.commands(
-                        return_commands, tags={'plugin:GcodeQueuingInjection', 'capture-return'})
-                    self._logger.debug("Sent return commands")
-                    
-                except Exception as e:
-                    self._logger.error("Failed to execute capture sequence: %s", e)
+                capture_pos, layer_n, layer_height = self.gen_capture_pos(
+                    original_cmd, start_position, self.cam_offsets, self.rnd_offset_range)
+                
+                # 1. Send movement commands  
+                move_commands = gcd.gen_move_to_capture_gcode(
+                    capture_position=capture_pos,
+                    retraction_mm=RETRACTION_MM,
+                    retraction_speed=RETRACTION_SPEED,
+                )
+                self._printer.commands(move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
+                
+                # 2. Wait for moves to complete using position sync
+                if self.get_position_async() is None:
+                    self._logger.error("Failed to reach capture position, aborting")
+                    return
+                
+                # 3. Capture image - printer is now guaranteed to be in position
+                capture_thread = threading.Thread(
+                    target=self.capture_img, args=(capture_pos, layer_n, layer_height))
+                capture_thread.start()
+                                    
+                # 4. Send return commands
+                return_commands = gcd.gen_capture_and_return_gcode(
+                    return_position=start_position,
+                    retraction_mm=RETRACTION_MM,
+                    retraction_speed=RETRACTION_SPEED,
+                )
+                self._printer.commands(return_commands, tags={'plugin:GcodeQueuingInjection', 'capture-return'})
+                
+                # 5. Wait for return sequence to complete using position sync
+                if self.get_position_async() is None:
+                    self._logger.error("Failed to complete return sequence")
+                
+                self._logger.debug("Capture sequence completed successfully")
                     
             except Exception as e:
                 self._logger.error("Error in capture sequence: %s", e)
             finally:
-                # Always release the job hold
+                # Wait for image capture to complete BEFORE releasing job hold
+                if capture_thread:
+                    capture_thread.join(timeout=10.0)
+                    self._logger.debug("Image capture thread completed")
+                
+                # Always release the job hold LAST
                 self._printer.set_job_on_hold(False)
                 self._logger.debug("Released job hold lock")
-                
-                # Wait for image capture to complete before returning
-                capture_thread.join(timeout=10.0)  # 10 second timeout for image capture
 
         
         # Start the worker thread
