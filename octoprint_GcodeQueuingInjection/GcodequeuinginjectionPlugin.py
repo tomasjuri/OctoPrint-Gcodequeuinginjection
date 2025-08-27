@@ -3,6 +3,7 @@ import logging
 import random as rnd
 from . import gcode_sequences as gcd
 import threading
+from flask import jsonify, request
 
 import re
 from .config import (
@@ -12,7 +13,6 @@ from .config import (
     RETRACTION_SPEED, 
     MOVE_FEEDRATE,
     CAPTURE_WAIT_TIME_MS,
-    BEFORE_CAPTURE_WAIT_TIME_MS,
     SNAPSHOT_URL,
     CAPTURE_FOLDER
 )
@@ -25,7 +25,8 @@ import os
 class GcodequeuinginjectionPlugin(
     octoprint.plugin.SettingsPlugin,
     octoprint.plugin.AssetPlugin,
-    octoprint.plugin.TemplatePlugin
+    octoprint.plugin.TemplatePlugin,
+    octoprint.plugin.BlueprintPlugin
 ):
     def __init__(self):
         self.print_gcode = False
@@ -57,7 +58,6 @@ class GcodequeuinginjectionPlugin(
             "retraction_speed": RETRACTION_SPEED,
             "move_feedrate": MOVE_FEEDRATE,
             "capture_wait_time_ms": CAPTURE_WAIT_TIME_MS,
-            "before_capture_wait_time_ms": BEFORE_CAPTURE_WAIT_TIME_MS,
             "snapshot_url": SNAPSHOT_URL,
             "capture_folder": CAPTURE_FOLDER,
         }
@@ -310,6 +310,55 @@ class GcodequeuinginjectionPlugin(
                 self._logger.warning("Failed to parse position from line: %s", line)
         
         return line
+
+    @octoprint.plugin.BlueprintPlugin.route("/", methods=["POST"])
+    def api_command(self):
+        """Handle API commands from the frontend."""
+        if not request.json:
+            return jsonify(error="No JSON data provided"), 400
+            
+        command = request.json.get("command")
+        
+        if command == "validate_folder":
+            folder_path = request.json.get("folder")
+            if not folder_path:
+                return jsonify(valid=False, error="No folder path provided")
+            
+            try:
+                # Expand user path and resolve relative paths
+                resolved_path = os.path.expanduser(folder_path)
+                resolved_path = os.path.abspath(resolved_path)
+                
+                # Check if the directory exists or can be created
+                if os.path.exists(resolved_path):
+                    if os.path.isdir(resolved_path):
+                        # Check if we can write to it
+                        if os.access(resolved_path, os.W_OK):
+                            return jsonify(valid=True, resolved_path=resolved_path)
+                        else:
+                            return jsonify(valid=False, error="Directory exists but is not writable")
+                    else:
+                        return jsonify(valid=False, error="Path exists but is not a directory")
+                else:
+                    # Try to create the directory
+                    try:
+                        os.makedirs(resolved_path, exist_ok=True)
+                        return jsonify(valid=True, resolved_path=resolved_path, created=True)
+                    except PermissionError:
+                        return jsonify(valid=False, error="Cannot create directory - permission denied")
+                    except OSError as e:
+                        return jsonify(valid=False, error=f"Cannot create directory - {str(e)}")
+                        
+            except Exception as e:
+                return jsonify(valid=False, error=f"Error validating folder: {str(e)}")
+        
+        return jsonify(error="Unknown command"), 400
+
+    def get_template_configs(self):
+        """Define which templates the plugin provides."""
+        return [
+            dict(type="settings", custom_bindings=False)
+        ]
 
     def get_assets(self):
         """Define plugin's asset files to automatically include in the core UI."""

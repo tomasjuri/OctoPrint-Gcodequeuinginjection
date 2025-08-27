@@ -1,0 +1,184 @@
+<div id="settings_plugin_GcodeQueuingInjection">
+    <div class="row-fluid">
+        <div class="span12">
+            <h3>{{ _('G-code Queuing Injection Settings') }}</h3>
+            <p>{{ _('Configure the settings for automatic layer capture during 3D printing.') }}</p>
+        </div>
+    </div>
+
+    <!-- Camera & Extruder Settings -->
+    <div class="row-fluid">
+        <div class="span12">
+            <h4>{{ _('Camera & Extruder Configuration') }}</h4>
+            
+            <div class="control-group">
+                <label class="control-label">{{ _('Camera Extruder Offsets') }}</label>
+                <div class="controls">
+                    <div class="row-fluid">
+                        <div class="span4">
+                            <label>{{ _('X Offset (mm)') }}</label>
+                            <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.cam_extruder_offsets.x" />
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Y Offset (mm)') }}</label>
+                            <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.cam_extruder_offsets.y" />
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Z Offset (mm)') }}</label>
+                            <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.cam_extruder_offsets.z" />
+                        </div>
+                    </div>
+                    <span class="help-block">{{ _('Physical offset between the extruder and camera positions.') }}</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">{{ _('Random Offset Ranges') }}</label>
+                <div class="controls">
+                    <div class="row-fluid">
+                        <div class="span4">
+                            <label>{{ _('X Range (mm)') }}</label>
+                            <div class="input-prepend input-append">
+                                <span class="add-on">Min</span>
+                                <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.random_offset_range.x()[0]" />
+                                <span class="add-on">Max</span>
+                                <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.random_offset_range.x()[1]" />
+                            </div>
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Y Range (mm)') }}</label>
+                            <div class="input-prepend input-append">
+                                <span class="add-on">Min</span>
+                                <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.random_offset_range.y()[0]" />
+                                <span class="add-on">Max</span>
+                                <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.random_offset_range.y()[1]" />
+                            </div>
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Z Range (mm)') }}</label>
+                            <div class="input-prepend input-append">
+                                <span class="add-on">Min</span>
+                                <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.random_offset_range.z()[0]" />
+                                <span class="add-on">Max</span>
+                                <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.random_offset_range.z()[1]" />
+                            </div>
+                        </div>
+                    </div>
+                    <span class="help-block">{{ _('Random variation range applied to capture positions for better dataset diversity.') }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Movement & Extrusion Settings -->
+    <div class="row-fluid">
+        <div class="span12">
+            <h4>{{ _('Movement & Extrusion Settings') }}</h4>
+            
+            <div class="control-group">
+                <label class="control-label" for="retraction_mm">{{ _('Retraction Distance') }}</label>
+                <div class="controls">
+                    <div class="input-append">
+                        <input type="number" class="input-mini" id="retraction_mm" step="0.1" min="0" data-bind="value: settings.plugins.GcodeQueuingInjection.retraction_mm" />
+                        <span class="add-on">mm</span>
+                    </div>
+                    <span class="help-block">{{ _('Amount of filament to retract before moving to capture position.') }}</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="retraction_speed">{{ _('Retraction Speed') }}</label>
+                <div class="controls">
+                    <div class="input-append">
+                        <input type="number" class="input-small" id="retraction_speed" step="100" min="100" data-bind="value: settings.plugins.GcodeQueuingInjection.retraction_speed" />
+                        <span class="add-on">mm/min</span>
+                    </div>
+                    <span class="help-block">{{ _('Speed for filament retraction and priming operations.') }}</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="move_feedrate">{{ _('Movement Speed') }}</label>
+                <div class="controls">
+                    <div class="input-append">
+                        <input type="number" class="input-small" id="move_feedrate" step="100" min="100" data-bind="value: settings.plugins.GcodeQueuingInjection.move_feedrate" />
+                        <span class="add-on">mm/min</span>
+                    </div>
+                    <span class="help-block">{{ _('Travel speed for moving to and from capture positions.') }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timing Settings -->
+    <div class="row-fluid">
+        <div class="span12">
+            <h4>{{ _('Capture Timing Settings') }}</h4>
+            
+            <div class="control-group">
+                <label class="control-label" for="capture_wait_time_ms">{{ _('Capture Wait Time') }}</label>
+                <div class="controls">
+                    <div class="input-append">
+                        <input type="number" class="input-small" id="capture_wait_time_ms" step="10" min="0" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_wait_time_ms" />
+                        <span class="add-on">ms</span>
+                    </div>
+                    <span class="help-block">{{ _('Wait time after reaching capture position before taking the photo.') }}</span>
+                </div>
+            </div>
+
+            
+        </div>
+    </div>
+
+    <!-- Camera & Storage Settings -->
+    <div class="row-fluid">
+        <div class="span12">
+            <h4>{{ _('Camera & Storage Settings') }}</h4>
+            
+            <div class="control-group">
+                <label class="control-label" for="snapshot_url">{{ _('Snapshot URL') }}</label>
+                <div class="controls">
+                    <input type="url" class="input-xxlarge" id="snapshot_url" data-bind="value: settings.plugins.GcodeQueuingInjection.snapshot_url" />
+                    <span class="help-block">{{ _('URL for capturing images from your camera. Usually your webcam stream endpoint.') }}</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="capture_folder">{{ _('Capture Folder') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-xxlarge" id="capture_folder" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_folder" />
+                    <span class="help-block">{{ _('Directory where captured images and metadata will be stored. Use ~ for home directory.') }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Controls -->
+    <div class="row-fluid">
+        <div class="span12">
+            <h4>{{ _('Test & Validation') }}</h4>
+            
+            <div class="control-group">
+                <div class="controls">
+                    <button class="btn btn-primary" data-bind="click: function() { var vm = $root.GcodeQueuingInjection; if (vm && vm.testCameraConnection) { vm.testCameraConnection(); } }">
+                        <i class="fa fa-camera"></i> {{ _('Test Camera Connection') }}
+                    </button>
+                    <button class="btn btn-info" data-bind="click: function() { var vm = $root.GcodeQueuingInjection; if (vm && vm.validateCaptureFolder) { vm.validateCaptureFolder(); } }">
+                        <i class="fa fa-folder-open"></i> {{ _('Validate Capture Folder') }}
+                    </button>
+                    <span class="help-block">{{ _('Use these buttons to test your configuration before starting a print.') }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Display -->
+    <div class="row-fluid">
+        <div class="span12">
+            <div id="plugin_test_results" class="alert" style="display: none;" data-bind="visible: ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testResults) ? ($root.GcodeQueuingInjection.testResults().length > 0) : false, css: {'alert-success': ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testSuccess) ? $root.GcodeQueuingInjection.testSuccess() : false, 'alert-error': ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testSuccess) ? !$root.GcodeQueuingInjection.testSuccess() : false}">
+                <strong data-bind="text: ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testSuccess && $root.GcodeQueuingInjection.testSuccess()) ? 'Success!' : 'Error!'"></strong>
+                <span data-bind="text: ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testResults) ? $root.GcodeQueuingInjection.testResults() : ''"></span>
+            </div>
+        </div>
+    </div>
+</div>
