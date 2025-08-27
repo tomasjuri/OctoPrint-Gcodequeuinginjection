@@ -5,14 +5,25 @@ from . import gcode_sequences as gcd
 import threading
 
 import re
-from .config import CAM_EXTRUDER_OFFSETS, RANDOM_OFFSET_RANGE, RETRACTION_MM, RETRACTION_SPEED, CAPTURE_FOLDER
+from .config import (
+    CAM_EXTRUDER_OFFSETS, 
+    RANDOM_OFFSET_RANGE, 
+    RETRACTION_MM, 
+    RETRACTION_SPEED, 
+    MOVE_FEEDRATE,
+    CAPTURE_WAIT_TIME_MS,
+    BEFORE_CAPTURE_WAIT_TIME_MS,
+    SNAPSHOT_URL,
+    CAPTURE_FOLDER
+)
 from .camera import Camera
 from datetime import datetime
 
 import json
 import os
 
-class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
+class GcodequeuinginjectionPlugin(
+    octoprint.plugin.SettingsPlugin,
     octoprint.plugin.AssetPlugin,
     octoprint.plugin.TemplatePlugin
 ):
@@ -29,18 +40,36 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         self._position_payload = None
         self._position_timeout = 30.0
         
-        self.cam_offsets = CAM_EXTRUDER_OFFSETS
-        self.rnd_offset_range = RANDOM_OFFSET_RANGE
-
         self.camera = Camera()
         self.init_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        self.capture_log_file_path = os.path.join(self._get_save_path(), "gcode_capture.log")
 
+    def get_settings_defaults(self):
+        """Return the default settings for the plugin using values from config.py"""
+        return {
+            "cam_extruder_offsets": CAM_EXTRUDER_OFFSETS,
+            "random_offset_range": {
+                "x": list(RANDOM_OFFSET_RANGE["x"]),
+                "y": list(RANDOM_OFFSET_RANGE["y"]), 
+                "z": list(RANDOM_OFFSET_RANGE["z"]),
+            },
+            "retraction_mm": RETRACTION_MM,
+            "retraction_speed": RETRACTION_SPEED,
+            "move_feedrate": MOVE_FEEDRATE,
+            "capture_wait_time_ms": CAPTURE_WAIT_TIME_MS,
+            "before_capture_wait_time_ms": BEFORE_CAPTURE_WAIT_TIME_MS,
+            "snapshot_url": SNAPSHOT_URL,
+            "capture_folder": CAPTURE_FOLDER,
+        }
+
+    def on_settings_save(self, data):
+        """Handle settings save from UI"""
+        octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
+        self._logger.info("Settings updated via UI")
 
     def _get_save_path(self):
         """Get the configured save path"""
-        save_path = os.path.expanduser(CAPTURE_FOLDER)
+        save_path = os.path.expanduser(self._settings.get(["capture_folder"]))
         save_path = os.path.join(save_path, self.init_timestamp)
         if not os.path.exists(save_path):
             self._logger.debug("Creating capture folder: %s", save_path)
@@ -181,13 +210,14 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                 
                 # Generate capture position
                 capture_pos, layer_n, layer_height = self.gen_capture_pos(
-                    original_cmd, start_position, self.cam_offsets, self.rnd_offset_range)
+                    original_cmd, start_position, self._settings.get(
+                        ["cam_extruder_offsets"]), self._settings.get(["random_offset_range"]))
                 
                 # 1. Send movement commands  
                 move_commands = gcd.gen_move_to_capture_gcode(
                     capture_position=capture_pos,
-                    retraction_mm=RETRACTION_MM,
-                    retraction_speed=RETRACTION_SPEED,
+                    retraction_mm=self._settings.get(["retraction_mm"]),
+                    retraction_speed=self._settings.get(["retraction_speed"]),
                 )
                 self._printer.commands(move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
                 
@@ -204,8 +234,8 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
                 # 4. Send return commands
                 return_commands = gcd.gen_capture_and_return_gcode(
                     return_position=start_position,
-                    retraction_mm=RETRACTION_MM,
-                    retraction_speed=RETRACTION_SPEED,
+                    retraction_mm=self._settings.get(["retraction_mm"]),
+                    retraction_speed=self._settings.get(["retraction_speed"]),
                 )
                 self._printer.commands(return_commands, tags={'plugin:GcodeQueuingInjection', 'capture-return'})
                 
@@ -264,8 +294,6 @@ class GcodequeuinginjectionPlugin(octoprint.plugin.SettingsPlugin,
         if self.print_gcode:
             self._logger.debug("Gcode sent: %s", cmd)
             
-        with open(self.capture_log_file_path, "a", encoding="utf-8") as f:
-            f.write(f"{cmd}\n")
 
 
     def gcode_received(self, comm_instance, line, *args, **kwargs):
