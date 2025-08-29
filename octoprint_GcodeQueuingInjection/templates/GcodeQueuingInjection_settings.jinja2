@@ -153,32 +153,4 @@
         </div>
     </div>
 
-    <!-- Test Controls -->
-    <div class="row-fluid">
-        <div class="span12">
-            <h4>{{ _('Test & Validation') }}</h4>
-            
-            <div class="control-group">
-                <div class="controls">
-                    <button class="btn btn-primary" data-bind="click: function() { var vm = $root.GcodeQueuingInjection; if (vm && vm.testCameraConnection) { vm.testCameraConnection(); } }">
-                        <i class="fa fa-camera"></i> {{ _('Test Camera Connection') }}
-                    </button>
-                    <button class="btn btn-info" data-bind="click: function() { var vm = $root.GcodeQueuingInjection; if (vm && vm.validateCaptureFolder) { vm.validateCaptureFolder(); } }">
-                        <i class="fa fa-folder-open"></i> {{ _('Validate Capture Folder') }}
-                    </button>
-                    <span class="help-block">{{ _('Use these buttons to test your configuration before starting a print.') }}</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Status Display -->
-    <div class="row-fluid">
-        <div class="span12">
-            <div id="plugin_test_results" class="alert" style="display: none;" data-bind="visible: ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testResults) ? ($root.GcodeQueuingInjection.testResults().length > 0) : false, css: {'alert-success': ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testSuccess) ? $root.GcodeQueuingInjection.testSuccess() : false, 'alert-error': ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testSuccess) ? !$root.GcodeQueuingInjection.testSuccess() : false}">
-                <strong data-bind="text: ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testSuccess && $root.GcodeQueuingInjection.testSuccess()) ? 'Success!' : 'Error!'"></strong>
-                <span data-bind="text: ($root.GcodeQueuingInjection && $root.GcodeQueuingInjection.testResults) ? $root.GcodeQueuingInjection.testResults() : ''"></span>
-            </div>
-        </div>
-    </div>
 </div>

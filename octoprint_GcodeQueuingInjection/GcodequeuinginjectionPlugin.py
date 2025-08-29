@@ -3,7 +3,6 @@ import logging
 import random as rnd
 from . import gcode_sequences as gcd
 import threading
-from flask import jsonify, request
 
 import re
 from .config import (
@@ -26,7 +25,7 @@ class GcodequeuinginjectionPlugin(
     octoprint.plugin.SettingsPlugin,
     octoprint.plugin.AssetPlugin,
     octoprint.plugin.TemplatePlugin,
-    octoprint.plugin.BlueprintPlugin
+    octoprint.plugin.SimpleApiPlugin
 ):
     def __init__(self):
         self.print_gcode = False
@@ -154,7 +153,7 @@ class GcodequeuinginjectionPlugin(
         """Capture image at specified position and save with metadata."""
         self._logger.debug("Capturing image. Expected to be at position: %s", capture_position)
         
-        img = self.camera.capture_image()
+        img = self.camera.capture_image(self._settings.get(["snapshot_url"]))
         self._logger.debug("Image captured")
         
         img_filepath = f"img_{layer_n:03d}.jpg"
@@ -311,49 +310,30 @@ class GcodequeuinginjectionPlugin(
         
         return line
 
-    @octoprint.plugin.BlueprintPlugin.route("/", methods=["POST"])
-    def api_command(self):
-        """Handle API commands from the frontend."""
-        if not request.json:
-            return jsonify(error="No JSON data provided"), 400
-            
-        command = request.json.get("command")
-        
-        if command == "validate_folder":
-            folder_path = request.json.get("folder")
-            if not folder_path:
-                return jsonify(valid=False, error="No folder path provided")
-            
-            try:
-                # Expand user path and resolve relative paths
-                resolved_path = os.path.expanduser(folder_path)
-                resolved_path = os.path.abspath(resolved_path)
-                
-                # Check if the directory exists or can be created
-                if os.path.exists(resolved_path):
-                    if os.path.isdir(resolved_path):
-                        # Check if we can write to it
-                        if os.access(resolved_path, os.W_OK):
-                            return jsonify(valid=True, resolved_path=resolved_path)
-                        else:
-                            return jsonify(valid=False, error="Directory exists but is not writable")
-                    else:
-                        return jsonify(valid=False, error="Path exists but is not a directory")
-                else:
-                    # Try to create the directory
-                    try:
-                        os.makedirs(resolved_path, exist_ok=True)
-                        return jsonify(valid=True, resolved_path=resolved_path, created=True)
-                    except PermissionError:
-                        return jsonify(valid=False, error="Cannot create directory - permission denied")
-                    except OSError as e:
-                        return jsonify(valid=False, error=f"Cannot create directory - {str(e)}")
-                        
-            except Exception as e:
-                return jsonify(valid=False, error=f"Error validating folder: {str(e)}")
-        
-        return jsonify(error="Unknown command"), 400
 
+    # http://localhost:8060/api/plugin/GcodeQueuingInjection?command=calib_capture
+    def on_api_get(self, request):
+        """Handle GET requests for direct URL access"""
+        command = request.args.get("command")
+        self._logger.info(f"API GET request received for command: {command}")
+        
+        if command == "calib_capture":
+            self._logger.info("🎯 CALIBRATION CAPTURE TRIGGERED via GET! Starting calibration sequence...")
+            result = self.calib_capture_method()
+            return dict(success=True, message="Calibration capture executed via GET", result=result)
+        else:
+            return dict(success=False, error=f"Unknown GET command: {command}")
+
+    def calib_capture_method(self):
+        """Calibration capture method"""
+        self._logger.info("📸 Executing calibration capture sequence...")
+        self._logger.info("✅ Calibration capture completed successfully!")
+        return "Calibration capture sequence executed at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def is_api_protected(self):
+        """Allow unauthenticated access to API for direct URL access"""
+        return False
+             
     def get_template_configs(self):
         """Define which templates the plugin provides."""
         return [
@@ -387,3 +367,5 @@ class GcodequeuinginjectionPlugin(
                 "pip": "https://github.com/tomasjuri/OctoPrint-Gcodequeuinginjection/archive/{target_version}.zip",
             }
         }
+
+

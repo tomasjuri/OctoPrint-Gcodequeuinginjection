@@ -38,16 +38,18 @@ class Camera:
         self._logger = logging.getLogger(__name__)
         self.cam_available = True
         
-    def capture_image(self):
+    def capture_image(self, snapshot_url=None):
         """Capture an image and return PIL Image"""
-        image = capture_from_octoprint_stream()
-        self._logger.info("Image captured from OctoPrint stream")
+        url = snapshot_url or SNAPSHOT_URL
+        image = capture_from_octoprint_stream(url)
+        self._logger.info("Image captured from OctoPrint stream using URL: %s", url)
         return image
     
             
     def cleanup(self):
         """Clean up camera resources"""
-        pass
+        # No cleanup needed for this implementation
+        return
 
     def __del__(self):
         self.cleanup()
@@ -57,7 +59,6 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     
     camera = Camera()
-    camera.initialize()
     print("Camera initialized")
     img = camera.capture_image()
     print(img.size)
