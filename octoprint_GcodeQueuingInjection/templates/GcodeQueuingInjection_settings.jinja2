@@ -116,10 +116,10 @@
             <h4>{{ _('Capture Timing Settings') }}</h4>
             
             <div class="control-group">
-                <label class="control-label" for="capture_wait_time_ms">{{ _('Capture Wait Time') }}</label>
+                <label class="control-label" for="wait_before_capture_ms">{{ _('Wait before capture') }}</label>
                 <div class="controls">
                     <div class="input-append">
-                        <input type="number" class="input-small" id="capture_wait_time_ms" step="10" min="0" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_wait_time_ms" />
+                        <input type="number" class="input-small" id="wait_before_capture_ms" step="10" min="0" data-bind="value: settings.plugins.GcodeQueuingInjection.wait_before_capture_ms" />
                         <span class="add-on">ms</span>
                     </div>
                     <span class="help-block">{{ _('Wait time after reaching capture position before taking the photo.') }}</span>

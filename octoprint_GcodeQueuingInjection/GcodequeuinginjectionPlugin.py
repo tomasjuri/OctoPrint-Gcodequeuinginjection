@@ -3,6 +3,7 @@ import logging
 import random as rnd
 from . import gcode_sequences as gcd
 import threading
+import time
 
 import re
 from .config import (
@@ -11,7 +12,7 @@ from .config import (
     RETRACTION_MM, 
     RETRACTION_SPEED, 
     MOVE_FEEDRATE,
-    CAPTURE_WAIT_TIME_MS,
+    WAIT_BEFORE_CAPTURE_MS,
     SNAPSHOT_URL,
     CAPTURE_FOLDER
 )
@@ -40,6 +41,12 @@ class GcodequeuinginjectionPlugin(
         self._position_payload = None
         self._position_timeout = 30.0
         
+        # Capture completion tracking
+        self._capture_signal = threading.Event()
+        self._capture_signal.set()
+        self._capture_request_sent = False
+        self._capture_timeout = 30.0
+        
         self.camera = Camera()
         self.init_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -56,7 +63,7 @@ class GcodequeuinginjectionPlugin(
             "retraction_mm": RETRACTION_MM,
             "retraction_speed": RETRACTION_SPEED,
             "move_feedrate": MOVE_FEEDRATE,
-            "capture_wait_time_ms": CAPTURE_WAIT_TIME_MS,
+            "wait_before_capture_ms": WAIT_BEFORE_CAPTURE_MS,
             "snapshot_url": SNAPSHOT_URL,
             "capture_folder": CAPTURE_FOLDER,
         }
@@ -139,6 +146,26 @@ class GcodequeuinginjectionPlugin(
             
         return self._position_payload
 
+    def wait_for_capture_completion(self, timeout=None):
+        """Wait for capture completion signal"""
+        if timeout is None:
+            timeout = self._capture_timeout
+            
+        self._logger.debug("Waiting for capture completion")
+        
+        # Check if we can wait (should be clear when capture starts)
+        if self._capture_signal.is_set():
+            self._logger.warning("Capture signal is already set, this might indicate a timing issue")
+            
+        # Wait for capture completion signal with timeout
+        event_is_set = self._capture_signal.wait(timeout)
+        if not event_is_set:
+            self._logger.warning("Timeout occurred while waiting for capture completion")
+            return False
+            
+        self._logger.debug("Capture completion confirmed")
+        return True
+
     def on_position_received(self, payload):
         """Handle position response"""
         if self._position_request_sent:
@@ -155,6 +182,7 @@ class GcodequeuinginjectionPlugin(
         
         img = self.camera.capture_image(self._settings.get(["snapshot_url"]))
         self._logger.debug("Image captured")
+        self._capture_signal.set()
         
         img_filepath = f"img_{layer_n:03d}.jpg"
         json_filepath = f"img_{layer_n:03d}.json"
@@ -192,7 +220,6 @@ class GcodequeuinginjectionPlugin(
             json.dump(data, f)
 
         self._logger.debug("Capture complete, saved to %s and %s", im_path, json_path)
-        
 
     def capture_sequence_async(self, original_cmd):
         """Handle the complete capture sequence asynchronously - simplified using position sync"""
@@ -225,12 +252,22 @@ class GcodequeuinginjectionPlugin(
                     self._logger.error("Failed to reach capture position, aborting")
                     return
                 
-                # 3. Capture image - printer is now guaranteed to be in position
+                # 3. Prepare for capture completion signaling
+                self._capture_signal.clear()  # Clear signal before starting capture
+                
+                # 4. Wait for wait_before_capture_ms
+                time.sleep(self._settings.get(["wait_before_capture_ms"]) / 1000)
+                
+                # 5. Capture image - printer is now guaranteed to be in position
                 capture_thread = threading.Thread(
                     target=self.capture_img, args=(capture_pos, layer_n, layer_height))
                 capture_thread.start()
+                
+                # 6. Wait for capture completion signal instead of fixed delay
+                if not self.wait_for_capture_completion():
+                    self._logger.error("Capture completion timeout, continuing anyway")
                                     
-                # 4. Send return commands
+                # 7. Send return commands after capture is confirmed complete
                 return_commands = gcd.gen_capture_and_return_gcode(
                     return_position=start_position,
                     retraction_mm=self._settings.get(["retraction_mm"]),
@@ -238,7 +275,7 @@ class GcodequeuinginjectionPlugin(
                 )
                 self._printer.commands(return_commands, tags={'plugin:GcodeQueuingInjection', 'capture-return'})
                 
-                # 5. Wait for return sequence to complete using position sync
+                # 8. Wait for return sequence to complete using position sync
                 if self.get_position_async() is None:
                     self._logger.error("Failed to complete return sequence")
                 

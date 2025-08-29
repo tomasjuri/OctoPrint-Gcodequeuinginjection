@@ -6,7 +6,7 @@ This module generates gcode sequences optimized for Prusa MK4 which uses:
 - G92 E0 for extruder position resets
 """
 
-from .config import MOVE_FEEDRATE, CAPTURE_WAIT_TIME_MS
+from .config import MOVE_FEEDRATE
 
 CAPTURE_GCODE = ("M240",)
 START_PRINT_GCODE = ("@PRINT",)
@@ -36,7 +36,6 @@ def gen_capture_and_return_gcode(return_position, retraction_mm, retraction_spee
     """Generate gcode to return from capture position (Prusa MK4 optimized)"""
     cmd = [
         "@CAPTURE_AND_RETURN",
-        f"G4 P{CAPTURE_WAIT_TIME_MS}",  # Wait for capture to complete
 
         "G90",   # Set to absolute mode for positioning
         f"G0 X{return_position['x']} Y{return_position['y']} Z{return_position['z']} F{MOVE_FEEDRATE}",  # Move back to print position
