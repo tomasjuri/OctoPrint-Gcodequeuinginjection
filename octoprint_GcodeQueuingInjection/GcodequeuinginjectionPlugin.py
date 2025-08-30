@@ -2,6 +2,7 @@ import octoprint.plugin
 import logging
 import random as rnd
 from . import gcode_sequences as gcd
+from . import calib_capture
 import threading
 import time
 
@@ -79,6 +80,24 @@ class GcodequeuinginjectionPlugin(
         save_path = os.path.join(save_path, self.init_timestamp)
         if not os.path.exists(save_path):
             self._logger.debug("Creating capture folder: %s", save_path)
+            os.makedirs(save_path)
+        return save_path
+
+    def _get_save_path_chessboard(self):
+        """Get the configured save path for the chessboard calibration"""
+        save_path = os.path.expanduser(self._settings.get(["capture_folder"]))
+        save_path = os.path.join(save_path, "chessboard", self.init_timestamp)
+        if not os.path.exists(save_path):
+            self._logger.debug("Creating chessboard capture folder: %s", save_path)
+            os.makedirs(save_path)
+        return save_path
+    
+    def _get_save_path_aruco(self):
+        """Get the configured save path for the aruco calibration"""
+        save_path = os.path.expanduser(self._settings.get(["capture_folder"]))
+        save_path = os.path.join(save_path, "aruco", self.init_timestamp)
+        if not os.path.exists(save_path):
+            self._logger.debug("Creating aruco capture folder: %s", save_path)
             os.makedirs(save_path)
         return save_path
 
@@ -176,7 +195,7 @@ class GcodequeuinginjectionPlugin(
         else:
             self._logger.debug("Position response received but not requested by us, ignoring")
 
-    def capture_img(self, capture_position, layer_n, layer_height):
+    def capture_img(self, capture_position, layer_n, layer_height, save_path=None):
         """Capture image at specified position and save with metadata."""
         self._logger.debug("Capturing image. Expected to be at position: %s", capture_position)
         
@@ -184,12 +203,25 @@ class GcodequeuinginjectionPlugin(
         self._logger.debug("Image captured")
         self._capture_signal.set()
         
-        img_filepath = f"img_{layer_n:03d}.jpg"
-        json_filepath = f"img_{layer_n:03d}.json"
+        if layer_n is None:
+            layer_n = 0
+        if layer_height is None:
+            layer_height = 0
+        
+        print(f"Creating image names")
+        img_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.jpg"
+        json_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.json"
 
-        im_path = os.path.join(self._get_save_path(), img_filepath)
+        print(f"Generating image name: {img_filepath}")
+        
+        if save_path is None:
+            save_path = self._get_save_path()
+        self._logger.debug("Saving image to %s", save_path)
+        im_path = os.path.join(save_path, img_filepath)
         img.save(im_path)
-
+        
+        
+        
         # Try to resolve current printed gcode path from OctoPrint's current job info
         gcode_path = None
         try:
@@ -256,6 +288,7 @@ class GcodequeuinginjectionPlugin(
                 self._capture_signal.clear()  # Clear signal before starting capture
                 
                 # 4. Wait for wait_before_capture_ms
+                self._logger.debug(f"Waiting for {self._settings.get(['wait_before_capture_ms'])} ms before capture")
                 time.sleep(self._settings.get(["wait_before_capture_ms"]) / 1000)
                 
                 # 5. Capture image - printer is now guaranteed to be in position
@@ -348,24 +381,29 @@ class GcodequeuinginjectionPlugin(
         return line
 
 
-    # http://localhost:8060/api/plugin/GcodeQueuingInjection?command=calib_capture
+    # http://localhost:8060/api/plugin/GcodeQueuingInjection?command=calib_capture_chessboard
+    # http://localhost:8060/api/plugin/GcodeQueuingInjection?command=calib_capture_aruco
     def on_api_get(self, request):
         """Handle GET requests for direct URL access"""
         command = request.args.get("command")
         self._logger.info(f"API GET request received for command: {command}")
+        self._logger.info("🎯 CALIBRATION CAPTURE TRIGGERED via GET! Starting calibration sequence...")
         
-        if command == "calib_capture":
-            self._logger.info("🎯 CALIBRATION CAPTURE TRIGGERED via GET! Starting calibration sequence...")
-            result = self.calib_capture_method()
+        if command == "calib_capture_chessboard":
+            self._logger.info("Capturing chessboard calibration images...")
+            self.calib_capture_sequence_async(save_path=self._get_save_path_chessboard())
+            result = True
             return dict(success=True, message="Calibration capture executed via GET", result=result)
+        
+        elif command == "calib_capture_aruco":
+            self._logger.info("Capturing aruco calibration images...")
+            self.calib_capture_sequence_async(save_path=self._get_save_path_aruco())
+            result = True
+            return dict(success=True, message="Calibration capture executed via GET", result=result)
+        
         else:
             return dict(success=False, error=f"Unknown GET command: {command}")
 
-    def calib_capture_method(self):
-        """Calibration capture method"""
-        self._logger.info("📸 Executing calibration capture sequence...")
-        self._logger.info("✅ Calibration capture completed successfully!")
-        return "Calibration capture sequence executed at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def is_api_protected(self):
         """Allow unauthenticated access to API for direct URL access"""
@@ -405,4 +443,69 @@ class GcodequeuinginjectionPlugin(
             }
         }
 
+
+    def calib_capture_sequence_async(self, save_path=None):
+        """Handle the complete capture sequence asynchronously - simplified using position sync"""
+        def calib_capture_worker(position_list):
+            capture_thread = None
+            capture_threads = []
+            try:
+                self._logger.debug("Started calibration capture worker")
+                
+                # # 1. Send movement commands  
+                # home_commands = gcd.gen_home_axes_gcode()
+                # self._printer.commands(home_commands, tags={'plugin:GcodeQueuingInjection', 'home-axes'})
+                
+                for position in position_list:
+                    move_commands = gcd.gen_move_simple_gcode(
+                        position=position,
+                        feedrate=self._settings.get(["move_feedrate"]),
+                    )
+                    self._printer.commands(move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
+                    
+                    # 2. Wait for moves to complete using position sync
+                    if self.get_position_async() is None:
+                        self._logger.error("Failed to reach capture position, aborting")
+                        return
+                    
+                    # 3. Prepare for capture completion signaling
+                    self._capture_signal.clear()  # Clear signal before starting capture
+                    
+                    # 4. Wait for wait_before_capture_ms
+                    time.sleep(self._settings.get(["wait_before_capture_ms"]) / 1000)
+                    
+                    # 5. Capture image - printer is now guaranteed to be in position
+                    capture_thread = threading.Thread(
+                        target=self.capture_img, args=(position, None, position["z"], save_path))
+                    capture_thread.start()
+                    capture_threads.append(capture_thread) 
+                    
+                    # 6. Wait for capture completion signal instead of fixed delay
+                    if not self.wait_for_capture_completion():
+                        self._logger.error("Capture completion timeout, continuing anyway")
+                                    
+            
+                # 7. Send movement commands  
+                home_commands = gcd.gen_home_axes_gcode()
+                self._printer.commands(home_commands, tags={'plugin:GcodeQueuingInjection', 'home-axes'})
+
+                self._logger.debug("Calibration capture sequence completed successfully")
+    
+            except Exception as e:
+                self._logger.error("Error in capture sequence: %s", e)
+            finally:
+                # Wait for image capture to complete BEFORE releasing job hold
+                for cap_thread in capture_threads:
+                    cap_thread.join(timeout=10.0)
+                    self._logger.debug("Image capture thread completed")
+                
+                # Always release the job hold LAST
+                self._printer.set_job_on_hold(False)
+                self._logger.debug("Released job hold lock")
+
+        position_list = calib_capture.get_calib_capture_positions()
+        # Start the worker thread
+        worker_thread = threading.Thread(target=calib_capture_worker, args=(position_list,))
+        worker_thread.daemon = True
+        worker_thread.start()
 

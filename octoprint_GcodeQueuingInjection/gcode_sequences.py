@@ -19,6 +19,15 @@ WAITING_FOR_POS_GCODE = [
     "@WAITING_FOR_POS_END",
 ]
 
+def gen_home_axes_gcode():
+    """Generate gcode to home all axes"""
+    cmd = [
+        "@HOME_AXES",
+        "G28",  # Home all axes
+        "@HOME_AXES_END",
+    ]
+    return cmd
+
 def gen_move_to_capture_gcode(capture_position, retraction_mm, retraction_speed):
     """Generate gcode to move to capture position (Prusa MK4 + Slic3r optimized)"""
     cmd = [
@@ -29,6 +38,17 @@ def gen_move_to_capture_gcode(capture_position, retraction_mm, retraction_speed)
         "G90",   # Set to absolute mode
         f"G0 X{capture_position['x']} Y{capture_position['y']} Z{capture_position['z']} F{MOVE_FEEDRATE}",  # Move to capture position
         "@MOVE_TO_CAPTURE_END",
+    ]
+    return cmd
+
+def gen_move_simple_gcode(position, feedrate):
+    """Generate gcode to move to position"""
+    cmd = [
+        "@MOVE_SIMPLE",
+        "G90",   # Set to absolute mode
+        f"G0 X{position['x']} Y{position['y']} Z{position['z']} F{feedrate}",  # Move to position
+        "M400",  # Wait for all moves to complete
+        "@MOVE_SIMPLE_END",
     ]
     return cmd
         
