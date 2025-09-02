@@ -22,3 +22,14 @@ def get_calib_capture_positions():
                     "z": z,
                 })
     return position_list
+
+def get_singlecalib_capture_position():
+    """
+    Generate the capture positions for the calibration.
+    """
+    position = {
+        "x": 100,
+        "y": 100,
+        "z": 150,
+    }
+    return position

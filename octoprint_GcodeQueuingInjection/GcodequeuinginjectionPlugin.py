@@ -195,7 +195,7 @@ class GcodequeuinginjectionPlugin(
         else:
             self._logger.debug("Position response received but not requested by us, ignoring")
 
-    def capture_img(self, capture_position, layer_n, layer_height, save_path=None):
+    def capture_img(self, capture_position, layer_n, layer_height, save_path=None, filename=None):
         """Capture image at specified position and save with metadata."""
         self._logger.debug("Capturing image. Expected to be at position: %s", capture_position)
         
@@ -208,9 +208,15 @@ class GcodequeuinginjectionPlugin(
         if layer_height is None:
             layer_height = 0
         
+        
         print(f"Creating image names")
-        img_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.jpg"
-        json_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.json"
+        if filename is None:
+            img_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.jpg"
+            json_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.json"
+        else:
+            img_filepath = filename
+            json_filepath = filename + ".json"
+        
 
         print(f"Generating image name: {img_filepath}")
         
@@ -392,14 +398,23 @@ class GcodequeuinginjectionPlugin(
         if command == "calib_capture_chessboard":
             self._logger.info("Capturing chessboard calibration images...")
             self.calib_capture_sequence_async(save_path=self._get_save_path_chessboard())
-            result = True
-            return dict(success=True, message="Calibration capture executed via GET", result=result)
+            return dict(success=True, message="Calibration capture executed via GET", result=True)
         
         elif command == "calib_capture_aruco":
             self._logger.info("Capturing aruco calibration images...")
             self.calib_capture_sequence_async(save_path=self._get_save_path_aruco())
-            result = True
-            return dict(success=True, message="Calibration capture executed via GET", result=result)
+            return dict(success=True, message="Calibration capture executed via GET", result=True)
+        
+        elif command == "calib_position":
+            self._logger.info("Getting calibration position...")
+            self.move_to_calib_position()
+            return dict(success=True, message="Calibration position retrieved via GET", result=True)
+
+        elif command == "capture":
+            self._logger.info("Capturing image...")
+            filename = time.strftime("%Y%m%d_%H%M%S") + ".jpg"
+            self.api_run_capture(save_path=self._get_save_path_chessboard(), filename=filename)
+            return dict(success=True, message="Capture executed via GET", result=True)
         
         else:
             return dict(success=False, error=f"Unknown GET command: {command}")
@@ -506,6 +521,66 @@ class GcodequeuinginjectionPlugin(
         position_list = calib_capture.get_calib_capture_positions()
         # Start the worker thread
         worker_thread = threading.Thread(target=calib_capture_worker, args=(position_list,))
+        worker_thread.daemon = True
+        worker_thread.start()
+
+
+
+    def move_to_calib_position(self):
+        """Handle the complete capture sequence asynchronously - simplified using position sync"""
+        def calib_capture_worker(position):
+            try:
+                self._logger.debug("Started calibration capture worker")
+                
+                # # 1. Send movement commands  
+                # home_commands = gcd.gen_home_axes_gcode()
+                # self._printer.commands(home_commands, tags={'plugin:GcodeQueuingInjection', 'home-axes'})
+                
+                move_commands = gcd.gen_move_simple_gcode(
+                    position=position,
+                    feedrate=self._settings.get(["move_feedrate"]),
+                )
+                self._printer.commands(move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
+                
+                # 2. Wait for moves to complete using position sync
+                if self.get_position_async() is None:
+                    self._logger.error("Failed to reach capture position, aborting")
+                    return
+            except Exception as e:
+                self._logger.error("Error in capture sequence: %s", e)
+            
+        position = calib_capture.get_singlecalib_capture_position()
+        # Start the worker thread
+        worker_thread = threading.Thread(target=calib_capture_worker, args=(position,))
+        worker_thread.daemon = True
+        worker_thread.start()
+
+
+    def api_run_capture(self, save_path=None, filename=None):
+        """Handle the complete capture sequence asynchronously - simplified using position sync"""
+        def calib_capture_worker(position, filename):
+            capture_thread = None
+            capture_threads = []
+            
+            self._capture_signal.clear()  # Clear signal before starting capture
+
+            # 1. Wait for wait_before_capture_ms
+            time.sleep(self._settings.get(["wait_before_capture_ms"]) / 1000)
+
+            # 2. Capture image - printer is now guaranteed to be in position
+            capture_thread = threading.Thread(
+                target=self.capture_img, args=(position, None, position["z"], save_path, filename))
+            capture_thread.start()
+            capture_threads.append(capture_thread) 
+
+            # 3. Wait for capture completion signal instead of fixed delay
+            if not self.wait_for_capture_completion():
+                self._logger.error("Capture completion timeout, continuing anyway")
+            
+
+        position = calib_capture.get_singlecalib_capture_position()
+        # Start the worker thread
+        worker_thread = threading.Thread(target=calib_capture_worker, args=(position, filename))
         worker_thread.daemon = True
         worker_thread.start()
 
