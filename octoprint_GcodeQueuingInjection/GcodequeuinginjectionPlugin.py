@@ -5,6 +5,7 @@ from . import gcode_sequences as gcd
 from . import calib_capture
 import threading
 import time
+import numpy as np
 
 import re
 from .config import (
@@ -194,6 +195,19 @@ class GcodequeuinginjectionPlugin(
             self._position_signal.set()
         else:
             self._logger.debug("Position response received but not requested by us, ignoring")
+    
+    def get_gcode_path(self):
+        # Try to resolve current printed gcode path from OctoPrint's current job info
+        gcode_path = "NoGcodeName"
+        try:
+            job = self._printer.get_current_job()
+            if isinstance(job, dict):
+                file_info = job.get("file") or {}
+                # Common fields: path (within uploads), name, display, origin
+                gcode_path = file_info.get("path") or file_info.get("name") or "NoGcodeName"
+        except Exception as e:
+            self._logger.warning("Failed to fetch current job info for metadata: %s", e)
+        return gcode_path
 
     def capture_img(self, capture_position, layer_n, layer_height, save_path=None, filename=None):
         """Capture image at specified position and save with metadata."""
@@ -202,43 +216,36 @@ class GcodequeuinginjectionPlugin(
         img = self.camera.capture_image(self._settings.get(["snapshot_url"]))
         self._logger.debug("Image captured")
         self._capture_signal.set()
+
+        x = int(capture_position['x'])
+        y = int(capture_position['y'])
+        z = int(capture_position['z'])
+        layer_n = 0 if layer_n is None else int(layer_n)
+        layer_height = 0 if layer_height is None else np.round(float(layer_height), 2)
         
-        if layer_n is None:
-            layer_n = 0
-        if layer_height is None:
-            layer_height = 0
-        
-        
-        print(f"Creating image names")
+        gcode_path = self.get_gcode_path()
+
+        img_filepath = None
+        json_filepath = None
         if filename is None:
-            img_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.jpg"
-            json_filepath = f"img_ZN{layer_n:03d}_Z{layer_height:03d}_X{capture_position['x']:03d}_Y{capture_position['y']:03d}_Z{capture_position['z']:03d}.json"
+            img_filepath = f"img_ZN{layer_n}_Z{layer_height}_X{x}_Y{y}_Z{z}.jpg"
+            json_filepath = f"img_ZN{layer_n}_Z{layer_height}_X{x}_Y{y}_Z{z}.json"
         else:
             img_filepath = filename
             json_filepath = filename + ".json"
         
-
-        print(f"Generating image name: {img_filepath}")
+        self._logger.debug(f"Generating image name: {img_filepath}")
         
         if save_path is None:
             save_path = self._get_save_path()
-        self._logger.debug("Saving image to %s", save_path)
+        path, folder = os.path.split(save_path)
+        save_path = os.path.join(path, f"{gcode_path}_{folder}")
+        os.makedirs(save_path, exist_ok=True)
         im_path = os.path.join(save_path, img_filepath)
+        self._logger.debug("Saving image to %s", im_path)
         img.save(im_path)
+        self._logger.debug("Image saved to %s", im_path)
         
-        
-        
-        # Try to resolve current printed gcode path from OctoPrint's current job info
-        gcode_path = None
-        try:
-            job = self._printer.get_current_job()
-            if isinstance(job, dict):
-                file_info = job.get("file") or {}
-                # Common fields: path (within uploads), name, display, origin
-                gcode_path = file_info.get("path") or file_info.get("name") or None
-        except Exception as e:
-            self._logger.warning("Failed to fetch current job info for metadata: %s", e)
-
         data = {
             "img_filepath": img_filepath,
             "json_filepath": json_filepath,
@@ -253,11 +260,12 @@ class GcodequeuinginjectionPlugin(
                 "timestamp": None,
             },
         }
-        json_path = os.path.join(self._get_save_path(), json_filepath)
+        json_path = os.path.join(save_path, json_filepath)
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
         self._logger.debug("Capture complete, saved to %s and %s", im_path, json_path)
+        
 
     def capture_sequence_async(self, original_cmd):
         """Handle the complete capture sequence asynchronously - simplified using position sync"""
