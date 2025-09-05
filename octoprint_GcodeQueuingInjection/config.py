@@ -6,8 +6,8 @@ CAM_EXTRUDER_OFFSETS = {
 }
 
 RANDOM_OFFSET_RANGE = {
-    "x": (-10,10),
-    "y": (-10,10),
+    "x": (-20,10),
+    "y": (-20,10),
     "z": (-10,10),
 }
 
