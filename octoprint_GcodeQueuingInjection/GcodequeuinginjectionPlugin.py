@@ -50,7 +50,7 @@ class GcodequeuinginjectionPlugin(
         self._capture_timeout = 30.0
         
         self.camera = Camera()
-        self.init_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.print_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
     def get_settings_defaults(self):
@@ -78,7 +78,7 @@ class GcodequeuinginjectionPlugin(
     def _get_save_path(self):
         """Get the configured save path"""
         save_path = os.path.expanduser(self._settings.get(["capture_folder"]))
-        save_path = os.path.join(save_path, self.init_timestamp)
+        save_path = os.path.join(save_path, self.print_timestamp)
         if not os.path.exists(save_path):
             self._logger.debug("Creating capture folder: %s", save_path)
             os.makedirs(save_path)
@@ -87,7 +87,7 @@ class GcodequeuinginjectionPlugin(
     def _get_save_path_chessboard(self):
         """Get the configured save path for the chessboard calibration"""
         save_path = os.path.expanduser(self._settings.get(["capture_folder"]))
-        save_path = os.path.join(save_path, "chessboard", self.init_timestamp)
+        save_path = os.path.join(save_path, "chessboard", self.print_timestamp)
         if not os.path.exists(save_path):
             self._logger.debug("Creating chessboard capture folder: %s", save_path)
             os.makedirs(save_path)
@@ -96,7 +96,7 @@ class GcodequeuinginjectionPlugin(
     def _get_save_path_aruco(self):
         """Get the configured save path for the aruco calibration"""
         save_path = os.path.expanduser(self._settings.get(["capture_folder"]))
-        save_path = os.path.join(save_path, "aruco", self.init_timestamp)
+        save_path = os.path.join(save_path, "aruco", self.print_timestamp)
         if not os.path.exists(save_path):
             self._logger.debug("Creating aruco capture folder: %s", save_path)
             os.makedirs(save_path)
@@ -371,6 +371,7 @@ class GcodequeuinginjectionPlugin(
         """Handle gcode sent."""
         if cmd and cmd == gcd.START_PRINT_GCODE[0]:
             self.print_gcode = True
+            self.print_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if cmd and cmd == gcd.STOP_PRINT_GCODE[0]:
             self.print_gcode = False
         
