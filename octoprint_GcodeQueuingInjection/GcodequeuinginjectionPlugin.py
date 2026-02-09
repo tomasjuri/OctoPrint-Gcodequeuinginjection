@@ -6,6 +6,7 @@ from . import calib_capture
 import threading
 import time
 import numpy as np
+import traceback
 
 import re
 from .config import (
@@ -129,11 +130,12 @@ class GcodequeuinginjectionPlugin(
         
         match = regex_position.search(line)
         if match is not None:
+            e_value = match.group("e")
             result = {
                 'x': float(match.group("x")),
                 'y': float(match.group("y")),
                 'z': float(match.group("z")),
-                'e': float(match.group("e"))
+                'e': float(e_value) if e_value is not None else 0.0
             }
             return result
         return None
@@ -267,6 +269,70 @@ class GcodequeuinginjectionPlugin(
         self._logger.debug("Capture complete, saved to %s and %s", im_path, json_path)
         
 
+    def _safe_float(self, value, default=0.0):
+        """Safely convert a value to float."""
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _safe_int(self, value, default=0):
+        """Safely convert a value to int."""
+        try:
+            return int(float(value))  # Handle string floats like "500.0"
+        except (TypeError, ValueError):
+            return default
+
+    def _get_validated_settings(self):
+        """Get and validate settings, merging with defaults for missing values."""
+        # Get cam_extruder_offsets - merge with defaults for any missing keys
+        offsets = self._settings.get(["cam_extruder_offsets"])
+        if not isinstance(offsets, dict):
+            offsets = {}
+        
+        # Merge user values with defaults, converting strings to floats
+        offsets = {
+            'x': self._safe_float(offsets.get('x'), CAM_EXTRUDER_OFFSETS['x']),
+            'y': self._safe_float(offsets.get('y'), CAM_EXTRUDER_OFFSETS['y']),
+            'z': self._safe_float(offsets.get('z'), CAM_EXTRUDER_OFFSETS['z']),
+        }
+        
+        # Get random_offset_range - merge with defaults for any missing keys
+        rnd_range = self._settings.get(["random_offset_range"])
+        if not isinstance(rnd_range, dict):
+            rnd_range = {}
+        
+        # Convert string values to floats in the range lists
+        def convert_range(val, default):
+            if isinstance(val, (list, tuple)) and len(val) >= 2:
+                return [self._safe_float(val[0], default[0]), self._safe_float(val[1], default[1])]
+            return list(default)
+        
+        # Merge user values with defaults
+        rnd_range = {
+            'x': convert_range(rnd_range.get('x'), RANDOM_OFFSET_RANGE['x']),
+            'y': convert_range(rnd_range.get('y'), RANDOM_OFFSET_RANGE['y']),
+            'z': convert_range(rnd_range.get('z'), RANDOM_OFFSET_RANGE['z']),
+        }
+        
+        return offsets, rnd_range
+
+    def _get_wait_before_capture_ms(self):
+        """Get wait_before_capture_ms with type conversion."""
+        return self._safe_int(self._settings.get(["wait_before_capture_ms"]), WAIT_BEFORE_CAPTURE_MS)
+
+    def _get_retraction_mm(self):
+        """Get retraction_mm with type conversion."""
+        return self._safe_float(self._settings.get(["retraction_mm"]), RETRACTION_MM)
+
+    def _get_retraction_speed(self):
+        """Get retraction_speed with type conversion."""
+        return self._safe_float(self._settings.get(["retraction_speed"]), RETRACTION_SPEED)
+
+    def _get_move_feedrate(self):
+        """Get move_feedrate with type conversion."""
+        return self._safe_float(self._settings.get(["move_feedrate"]), MOVE_FEEDRATE)
+
     def capture_sequence_async(self, original_cmd):
         """Handle the complete capture sequence asynchronously - simplified using position sync"""
         def capture_worker():
@@ -280,16 +346,23 @@ class GcodequeuinginjectionPlugin(
                     self._logger.error("Failed to get position, aborting capture")
                     return
                 
+                # Validate position has required keys
+                if not isinstance(start_position, dict) or not all(k in start_position for k in ('x', 'y', 'z')):
+                    self._logger.error("Invalid position data: %s, aborting capture", start_position)
+                    return
+                
+                # Get validated settings
+                offsets, rnd_range = self._get_validated_settings()
+                
                 # Generate capture position
                 capture_pos, layer_n, layer_height = self.gen_capture_pos(
-                    original_cmd, start_position, self._settings.get(
-                        ["cam_extruder_offsets"]), self._settings.get(["random_offset_range"]))
+                    original_cmd, start_position, offsets, rnd_range)
                 
                 # 1. Send movement commands  
                 move_commands = gcd.gen_move_to_capture_gcode(
                     capture_position=capture_pos,
-                    retraction_mm=self._settings.get(["retraction_mm"]),
-                    retraction_speed=self._settings.get(["retraction_speed"]),
+                    retraction_mm=self._get_retraction_mm(),
+                    retraction_speed=self._get_retraction_speed(),
                 )
                 self._printer.commands(move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
                 
@@ -302,8 +375,9 @@ class GcodequeuinginjectionPlugin(
                 self._capture_signal.clear()  # Clear signal before starting capture
                 
                 # 4. Wait for wait_before_capture_ms
-                self._logger.debug(f"Waiting for {self._settings.get(['wait_before_capture_ms'])} ms before capture")
-                time.sleep(self._settings.get(["wait_before_capture_ms"]) / 1000)
+                wait_ms = self._get_wait_before_capture_ms()
+                self._logger.debug(f"Waiting for {wait_ms} ms before capture")
+                time.sleep(wait_ms / 1000)
                 
                 # 5. Capture image - printer is now guaranteed to be in position
                 capture_thread = threading.Thread(
@@ -317,8 +391,8 @@ class GcodequeuinginjectionPlugin(
                 # 7. Send return commands after capture is confirmed complete
                 return_commands = gcd.gen_capture_and_return_gcode(
                     return_position=start_position,
-                    retraction_mm=self._settings.get(["retraction_mm"]),
-                    retraction_speed=self._settings.get(["retraction_speed"]),
+                    retraction_mm=self._get_retraction_mm(),
+                    retraction_speed=self._get_retraction_speed(),
                 )
                 self._printer.commands(return_commands, tags={'plugin:GcodeQueuingInjection', 'capture-return'})
                 
@@ -329,7 +403,7 @@ class GcodequeuinginjectionPlugin(
                 self._logger.debug("Capture sequence completed successfully")
                     
             except Exception as e:
-                self._logger.error("Error in capture sequence: %s", e)
+                self._logger.error("Error in capture sequence: %s\n%s", e, traceback.format_exc())
             finally:
                 # Wait for image capture to complete BEFORE releasing job hold
                 if capture_thread:
@@ -483,7 +557,7 @@ class GcodequeuinginjectionPlugin(
                 for position in position_list:
                     move_commands = gcd.gen_move_simple_gcode(
                         position=position,
-                        feedrate=self._settings.get(["move_feedrate"]),
+                        feedrate=self._get_move_feedrate(),
                     )
                     self._printer.commands(move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
                     
@@ -496,7 +570,7 @@ class GcodequeuinginjectionPlugin(
                     self._capture_signal.clear()  # Clear signal before starting capture
                     
                     # 4. Wait for wait_before_capture_ms
-                    time.sleep(self._settings.get(["wait_before_capture_ms"]) / 1000)
+                    time.sleep(self._get_wait_before_capture_ms() / 1000)
                     
                     # 5. Capture image - printer is now guaranteed to be in position
                     capture_thread = threading.Thread(
@@ -516,7 +590,7 @@ class GcodequeuinginjectionPlugin(
                 self._logger.debug("Calibration capture sequence completed successfully")
     
             except Exception as e:
-                self._logger.error("Error in capture sequence: %s", e)
+                self._logger.error("Error in calibration capture sequence: %s\n%s", e, traceback.format_exc())
             finally:
                 # Wait for image capture to complete BEFORE releasing job hold
                 for cap_thread in capture_threads:
@@ -547,7 +621,7 @@ class GcodequeuinginjectionPlugin(
                 
                 move_commands = gcd.gen_move_simple_gcode(
                     position=position,
-                    feedrate=self._settings.get(["move_feedrate"]),
+                    feedrate=self._get_move_feedrate(),
                 )
                 self._printer.commands(move_commands, tags={'plugin:GcodeQueuingInjection', 'capture-move'})
                 
@@ -556,7 +630,7 @@ class GcodequeuinginjectionPlugin(
                     self._logger.error("Failed to reach capture position, aborting")
                     return
             except Exception as e:
-                self._logger.error("Error in capture sequence: %s", e)
+                self._logger.error("Error in move to calib position: %s\n%s", e, traceback.format_exc())
             
         position = calib_capture.get_singlecalib_capture_position()
         # Start the worker thread
@@ -574,7 +648,7 @@ class GcodequeuinginjectionPlugin(
             self._capture_signal.clear()  # Clear signal before starting capture
 
             # 1. Wait for wait_before_capture_ms
-            time.sleep(self._settings.get(["wait_before_capture_ms"]) / 1000)
+            time.sleep(self._get_wait_before_capture_ms() / 1000)
 
             # 2. Capture image - printer is now guaranteed to be in position
             capture_thread = threading.Thread(
