@@ -17,7 +17,9 @@ from .config import (
     MOVE_FEEDRATE,
     WAIT_BEFORE_CAPTURE_MS,
     SNAPSHOT_URL,
-    CAPTURE_FOLDER
+    CAPTURE_FOLDER,
+    CAPTURE_EVERY_N_LAYERS,
+    CAPTURE_ALL_FIRST_N_LAYERS,
 )
 from .camera import Camera
 from datetime import datetime
@@ -69,6 +71,8 @@ class GcodequeuinginjectionPlugin(
             "wait_before_capture_ms": WAIT_BEFORE_CAPTURE_MS,
             "snapshot_url": SNAPSHOT_URL,
             "capture_folder": CAPTURE_FOLDER,
+            "capture_every_n_layers": CAPTURE_EVERY_N_LAYERS,
+            "capture_all_first_n_layers": CAPTURE_ALL_FIRST_N_LAYERS,
         }
 
     def on_settings_save(self, data):
@@ -333,6 +337,16 @@ class GcodequeuinginjectionPlugin(
         """Get move_feedrate with type conversion."""
         return self._safe_float(self._settings.get(["move_feedrate"]), MOVE_FEEDRATE)
 
+    def _get_capture_every_n_layers(self):
+        """Get capture_every_n_layers with type conversion. Minimum 1."""
+        val = self._safe_int(self._settings.get(["capture_every_n_layers"]), CAPTURE_EVERY_N_LAYERS)
+        return max(1, val)
+
+    def _get_capture_all_first_n_layers(self):
+        """Get capture_all_first_n_layers with type conversion. Minimum 0."""
+        val = self._safe_int(self._settings.get(["capture_all_first_n_layers"]), CAPTURE_ALL_FIRST_N_LAYERS)
+        return max(0, val)
+
     def capture_sequence_async(self, original_cmd):
         """Handle the complete capture sequence asynchronously - simplified using position sync"""
         def capture_worker():
@@ -420,6 +434,18 @@ class GcodequeuinginjectionPlugin(
         worker_thread.daemon = True
         worker_thread.start()
 
+    def _should_capture_layer(self, layer_n):
+        """Determine whether to capture on this layer based on frequency settings.
+        
+        Captures every layer for the first N layers, then only every Mth layer.
+        """
+        first_n = self._get_capture_all_first_n_layers()
+        every_n = self._get_capture_every_n_layers()
+        
+        if layer_n <= first_n:
+            return True
+        return layer_n % every_n == 0
+
     def gcode_queuing(self, comm_instance, phase, cmd, cmd_type, gcode, *args, **kwargs):
         """Handle gcode queuing."""
         if gcode and gcode == gcd.CAPTURE_GCODE[0]:
@@ -427,6 +453,16 @@ class GcodequeuinginjectionPlugin(
             
             # S0: Start capture sequence using Octolapse pattern
             if self.state == "S0": 
+                # Parse layer number from command (format: M240 Z<height> ZN<layer_num> S<state>)
+                parts = cmd.split(" ")
+                layer_n = int(parts[2][2:])  # Extract from "ZN<num>"
+                
+                # Check if we should capture this layer
+                if not self._should_capture_layer(layer_n):
+                    self._logger.debug("Skipping capture for layer %d (capture_every_n=%d, first_n=%d)",
+                                       layer_n, self._get_capture_every_n_layers(), self._get_capture_all_first_n_layers())
+                    return None,
+                
                 self._logger.debug("S0 STATE: Starting capture sequence with command: %s", cmd)
                 
                 # Use job_on_hold to pause queue processing

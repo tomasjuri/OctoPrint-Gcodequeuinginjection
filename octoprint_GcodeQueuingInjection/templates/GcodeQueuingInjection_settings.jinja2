@@ -130,6 +130,35 @@
         </div>
     </div>
 
+    <!-- Capture Frequency Settings -->
+    <div class="row-fluid">
+        <div class="span12">
+            <h4>{{ _('Capture Frequency Settings') }}</h4>
+
+            <div class="control-group">
+                <label class="control-label" for="capture_every_n_layers">{{ _('Capture every N layers') }}</label>
+                <div class="controls">
+                    <div class="input-append">
+                        <input type="number" class="input-mini" id="capture_every_n_layers" step="1" min="1" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_every_n_layers" />
+                        <span class="add-on">layers</span>
+                    </div>
+                    <span class="help-block">{{ _('After the initial layers, capture only every Nth layer. (e.g. 5 = capture layer 10, 15, 20, ...)') }}</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="capture_all_first_n_layers">{{ _('Capture all first N layers') }}</label>
+                <div class="controls">
+                    <div class="input-append">
+                        <input type="number" class="input-mini" id="capture_all_first_n_layers" step="1" min="0" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_all_first_n_layers" />
+                        <span class="add-on">layers</span>
+                    </div>
+                    <span class="help-block">{{ _('Capture every layer for the first N layers of the print, then switch to the interval above.') }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Camera & Storage Settings -->
     <div class="row-fluid">
         <div class="span12">

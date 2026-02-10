@@ -20,6 +20,9 @@ SNAPSHOT_URL = "http://127.0.0.1:8080/?action=snapshot"
 
 CAPTURE_FOLDER = "~/data/layer_captures"
 
+CAPTURE_EVERY_N_LAYERS = 5
+CAPTURE_ALL_FIRST_N_LAYERS = 5
+
 
 
 
