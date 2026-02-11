@@ -21,6 +21,7 @@ dependencies = [
     "numpy",
     "Pillow",
     "opencv-python-headless",
+    "onnxruntime",
 ]
 
 [tool.setuptools]

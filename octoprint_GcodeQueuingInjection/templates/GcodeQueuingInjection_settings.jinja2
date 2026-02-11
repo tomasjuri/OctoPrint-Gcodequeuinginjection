@@ -182,4 +182,121 @@
         </div>
     </div>
 
+    <!-- Inference Settings -->
+    <div class="row-fluid">
+        <div class="span12">
+            <h4>{{ _('Inference Settings') }}</h4>
+
+            <div class="control-group">
+                <label class="control-label">{{ _('Fixed Capture Position (Nozzle)') }}</label>
+                <div class="controls">
+                    <div class="row-fluid">
+                        <div class="span4">
+                            <label>{{ _('Nozzle X (mm)') }}</label>
+                            <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_nozzle_x" />
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Nozzle Y (mm)') }}</label>
+                            <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_nozzle_y" />
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Z Offset (mm)') }}</label>
+                            <input type="number" class="input-mini" step="0.1" data-bind="value: settings.plugins.GcodeQueuingInjection.capture_z_offset" />
+                        </div>
+                    </div>
+                    <span class="help-block">{{ _('Fixed nozzle position so camera ends up at bed center. Z offset is added to current layer height.') }}</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="onnx_model_path">{{ _('ONNX Model Path') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-xxlarge" id="onnx_model_path" data-bind="value: settings.plugins.GcodeQueuingInjection.onnx_model_path" />
+                    <span class="help-block">{{ _('Path to the ONNX model file for inference.') }}</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="calibration_json_path">{{ _('Calibration JSON Path') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-xxlarge" id="calibration_json_path" data-bind="value: settings.plugins.GcodeQueuingInjection.calibration_json_path" />
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="calibration_name">{{ _('Calibration Name') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-medium" id="calibration_name" data-bind="value: settings.plugins.GcodeQueuingInjection.calibration_name" />
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="camera_intrinsic_path">{{ _('Camera Intrinsic Path') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-xxlarge" id="camera_intrinsic_path" data-bind="value: settings.plugins.GcodeQueuingInjection.camera_intrinsic_path" />
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">{{ _('Render / Patch Settings') }}</label>
+                <div class="controls">
+                    <div class="row-fluid">
+                        <div class="span4">
+                            <label>{{ _('Render Max Res (px)') }}</label>
+                            <input type="number" class="input-mini" step="256" min="512" max="4096" data-bind="value: settings.plugins.GcodeQueuingInjection.render_max_resolution" />
+                            <span class="help-block">{{ _('Max render dimension (lower = faster). GPU limit: 4096.') }}</span>
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Quick-check Patches') }}</label>
+                            <input type="number" class="input-mini" step="1" min="1" max="16" data-bind="value: settings.plugins.GcodeQueuingInjection.quick_check_patches" />
+                            <span class="help-block">{{ _('Center patches for fast pass. Full check only on failure.') }}</span>
+                        </div>
+                        <div class="span4">
+                        </div>
+                    </div>
+                    <div class="row-fluid" style="margin-top: 8px;">
+                        <div class="span4">
+                            <label>{{ _('Patch Size (px)') }}</label>
+                            <input type="number" class="input-mini" step="1" min="1" data-bind="value: settings.plugins.GcodeQueuingInjection.patch_size" />
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('Overlap (0-1)') }}</label>
+                            <input type="number" class="input-mini" step="0.05" min="0" max="0.95" data-bind="value: settings.plugins.GcodeQueuingInjection.patch_overlap" />
+                        </div>
+                        <div class="span4">
+                            <label>{{ _('CNN Input Size (px)') }}</label>
+                            <input type="number" class="input-mini" step="1" min="1" data-bind="value: settings.plugins.GcodeQueuingInjection.cnn_input_size" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">{{ _('Pass/Fail Thresholds') }}</label>
+                <div class="controls">
+                    <div class="row-fluid">
+                        <div class="span6">
+                            <label>{{ _('Pass Ratio (0-1)') }}</label>
+                            <input type="number" class="input-mini" step="0.05" min="0" max="1" data-bind="value: settings.plugins.GcodeQueuingInjection.pass_ratio_threshold" />
+                            <span class="help-block">{{ _('Fraction of patches that must pass (e.g. 0.9 means 90%%).') }}</span>
+                        </div>
+                        <div class="span6">
+                            <label>{{ _('Score Threshold (0-1)') }}</label>
+                            <input type="number" class="input-mini" step="0.05" min="0" max="1" data-bind="value: settings.plugins.GcodeQueuingInjection.pass_score_threshold" />
+                            <span class="help-block">{{ _('Per-patch score threshold for pass.') }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="inference_save_folder">{{ _('Inference Save Folder') }}</label>
+                <div class="controls">
+                    <input type="text" class="input-xxlarge" id="inference_save_folder" data-bind="value: settings.plugins.GcodeQueuingInjection.inference_save_folder" />
+                    <span class="help-block">{{ _('Directory for saving inference results (captures, renders, heatmaps).') }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
